@@ -1,4 +1,3 @@
-
 using System.Threading.RateLimiting;
 using System.Globalization;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
@@ -16,7 +15,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 PersistenceOptions persistenceOptions = builder.Configuration
     .GetSection(PersistenceOptions.SectionName)
-    .Get<PersistenceOptions>() ?? new();
+    .Get<PersistenceOptions>()??new();
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
@@ -27,12 +26,21 @@ if (builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddAuthentication("Test")
         .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, TestingAuthenticationHandler>("Test", _ => { });
 }
+else if (builder.Environment.IsDevelopment())
+{
+    // Fake auth for local debugging only — no real IdP/JWT required.
+    // Simulated user name/roles are configured via the "DevelopmentAuth" section
+    // in appsettings.Development.json, so they can be tweaked without recompiling.
+    builder.Services.Configure<DevelopmentAuthOptions>(builder.Configuration.GetSection(DevelopmentAuthOptions.SectionName));
+    builder.Services.AddAuthentication("Development")
+        .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>("Development", _ => { });
+}
 else
 {
     SecurityOptions securityOptions = builder.Configuration
         .GetSection(SecurityOptions.SectionName)
-        .Get<SecurityOptions>() ?? throw new InvalidOperationException("Security configuration is missing.");
-    if (string.IsNullOrWhiteSpace(securityOptions.Authority) || string.IsNullOrWhiteSpace(securityOptions.Audience))
+        .Get<SecurityOptions>()??throw new InvalidOperationException("Security configuration is missing.");
+    if (string.IsNullOrWhiteSpace(securityOptions.Authority)||string.IsNullOrWhiteSpace(securityOptions.Audience))
     {
         throw new InvalidOperationException("Security:Authority and Security:Audience must be configured.");
     }
@@ -40,9 +48,9 @@ else
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            options.Authority = securityOptions.Authority;
-            options.Audience = securityOptions.Audience;
-            options.RequireHttpsMetadata = securityOptions.RequireHttpsMetadata;
+            options.Authority=securityOptions.Authority;
+            options.Audience=securityOptions.Audience;
+            options.RequireHttpsMetadata=securityOptions.RequireHttpsMetadata;
         });
 }
 builder.Services.AddAuthorization(options =>
@@ -58,7 +66,7 @@ builder.Services.AddHybridCache();
 if (persistenceOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
 {
     string connectionString = builder.Configuration.GetConnectionString(persistenceOptions.ConnectionStringName)
-        ?? throw new InvalidOperationException($"Connection string '{persistenceOptions.ConnectionStringName}' is not configured.");
+        ??throw new InvalidOperationException($"Connection string '{persistenceOptions.ConnectionStringName}' is not configured.");
 
     builder.Services.AddDbContext<BookingDbContext>(options => options.UseSqlServer(connectionString, sqlServerOptions =>
         sqlServerOptions.EnableRetryOnFailure(
@@ -82,15 +90,15 @@ builder.Services.AddScoped<BookingService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-         RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = 100,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0,
-            AutoReplenishment = true
-        }));
+    options.RejectionStatusCode=StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter=PartitionedRateLimiter.Create<HttpContext, string>(context =>
+         RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString()??"unknown", _ => new FixedWindowRateLimiterOptions
+         {
+             PermitLimit=100,
+             Window=TimeSpan.FromMinutes(1),
+             QueueLimit=0,
+             AutoReplenishment=true
+         }));
 });
 
 WebApplication app = builder.Build();
@@ -109,7 +117,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "Conference Room Booking API v1");
-        options.RoutePrefix = "swagger";
+        options.RoutePrefix="swagger";
     });
 }
 else
@@ -118,9 +126,9 @@ else
 app.UseHttpsRedirection();
 app.UseRequestLocalization(new RequestLocalizationOptions
 {
-    DefaultRequestCulture = new RequestCulture(CultureInfo.InvariantCulture),
-    SupportedCultures = new List<CultureInfo> { CultureInfo.InvariantCulture },
-    SupportedUICultures = new List<CultureInfo> { CultureInfo.InvariantCulture }
+    DefaultRequestCulture=new RequestCulture(CultureInfo.InvariantCulture),
+    SupportedCultures=new List<CultureInfo> { CultureInfo.InvariantCulture },
+    SupportedUICultures=new List<CultureInfo> { CultureInfo.InvariantCulture }
 });
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -131,7 +139,3 @@ app.MapControllers();
 app.MapHealthChecks("/health").AllowAnonymous();
 
 app.Run();
-
-public partial class Program
-{
-}
