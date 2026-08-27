@@ -1,0 +1,35 @@
+@ConferenceRoomBookingAPIv3_HostAddress = https://localhost:32771
+@roomId = 00000000-0000-0000-0000-000000000000
+
+### List rooms
+GET {{ConferenceRoomBookingAPIv3_HostAddress}}/api/v1/rooms
+Accept: application/json
+
+### Find available rooms
+GET {{ConferenceRoomBookingAPIv3_HostAddress}}/api/v1/rooms/available?startsAt=2026-09-01T10:00:00%2B03:00&endsAt=2026-09-01T14:00:00%2B03:00&capacity=50
+Accept: application/json
+
+### Add a room
+POST {{ConferenceRoomBookingAPIv3_HostAddress}}/api/v1/rooms
+Content-Type: application/json
+
+{
+  "name": "Зал D",
+  "capacity": 25,
+  "baseHourlyRate": 1800,
+  "services": [
+    { "name": "Проектор", "price": 500 },
+    { "name": "Wi-Fi", "price": 300 }
+  ]
+}
+
+### Book a room
+POST {{ConferenceRoomBookingAPIv3_HostAddress}}/api/v1/bookings
+Content-Type: application/json
+
+{
+  "roomId": "{{roomId}}",
+  "startsAt": "2026-09-01T18:00:00+03:00",
+  "durationMinutes": 120,
+  "serviceIds": []
+}

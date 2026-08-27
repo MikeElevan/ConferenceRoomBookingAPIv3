@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/ConferenceRoomBookingAPIv3.IntegrationTests.csproj" />
+  </Folder>
+  <Project Path="ConferenceRoomBookingAPIv3.csproj" />
+</Solution>
