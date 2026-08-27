@@ -2,9 +2,10 @@ using ConferenceRoomBookingAPIv3.Application.Interfaces;
 using ConferenceRoomBookingAPIv3.Application.Services;
 using ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
+using ConferenceRoomBookingAPIv3.Controllers.Helpers;
 using ConferenceRoomBookingAPIv3.DomainModels;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ConferenceRoomBookingAPIv3.Controllers;
 
@@ -15,11 +16,11 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RoomResponse>>> GetAll(CancellationToken cancellationToken) =>
-        Ok((await repository.GetRoomsAsync(cancellationToken)).Select(ToResponse));
+        Ok((await repository.GetRoomsAsync(cancellationToken)).Select(ConferenceRoomsHelper.ToResponse));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<RoomResponse>> Get(Guid id, CancellationToken cancellationToken) =>
-        await repository.GetRoomAsync(id, cancellationToken) is { } room ? Ok(ToResponse(room)) : NotFound();
+        await repository.GetRoomAsync(id, cancellationToken) is { } room ? Ok(ConferenceRoomsHelper.ToResponse(room)) : NotFound();
 
     [HttpPost]
     [Authorize(Policy = "Administrator")]
@@ -27,9 +28,9 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        ConferenceRoom room = ToEntity(request);
+        ConferenceRoom room = ConferenceRoomsHelper.ToEntity(request);
         await repository.AddRoomAsync(room, cancellationToken);
-        return CreatedAtAction(nameof(Get), new { id = room.Id }, ToResponse(room));
+        return CreatedAtAction(nameof(Get), new { id = room.Id }, ConferenceRoomsHelper.ToResponse(room));
     }
 
     [HttpPut("{id:guid}")]
@@ -38,11 +39,32 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!await repository.UpdateRoomAsync(ToEntity(request, id), cancellationToken))
+        if (!await repository.UpdateRoomAsync(ConferenceRoomsHelper.ToEntity(request, id), cancellationToken))
         {
             return NotFound();
         }
-            
+
+        return NoContent();
+    }
+
+    [HttpPatch("{id:guid}")]
+    [Authorize(Policy = "Administrator")]
+    public async Task<ActionResult> Patch(Guid id, RoomPatchRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        ConferenceRoom? room = await repository.GetRoomAsync(id, cancellationToken);
+        if (room is null)
+        {
+            return NotFound();
+        }
+
+        ConferenceRoomsHelper.ApplyPatch(room, request);
+        if (!await repository.UpdateRoomAsync(room, cancellationToken))
+        {
+            return NotFound();
+        }
+
         return NoContent();
     }
 
@@ -52,30 +74,9 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
         await repository.DeleteRoomAsync(id, cancellationToken) ? NoContent() : NotFound();
 
     [HttpGet("available")]
-    public async Task<ActionResult<IReadOnlyList<RoomResponse>>> FindAvailable([FromQuery] AvailabilityRequest request, CancellationToken cancellationToken) =>
-        await FindAvailableAsync(request, cancellationToken);
-
-    private async Task<ActionResult<IReadOnlyList<RoomResponse>>> FindAvailableAsync(AvailabilityRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyList<RoomResponse>>> FindAvailable([FromQuery] AvailabilityRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return Ok((await bookingService.SearchAsync(request.StartsAt!.Value, request.EndsAt!.Value, request.Capacity, cancellationToken)).Select(ToResponse));
+        return Ok((await bookingService.SearchAsync(request.StartsAt!.Value, request.EndsAt!.Value, request.Capacity, cancellationToken)).Select(ConferenceRoomsHelper.ToResponse));
     }
-
-    private static ConferenceRoom ToEntity(RoomRequest request, Guid? id = null) => new()
-    {
-        Id=id??Guid.NewGuid(),
-        Name=request.Name.Trim(),
-        Capacity=request.Capacity,
-        BaseHourlyRate=request.BaseHourlyRate,
-        Services=request.Services.Select(service => new RoomService
-        {
-            Id=Guid.NewGuid(),
-            Name=service.Name.Trim(),
-            Price=service.Price
-        }).ToList()
-    };
-
-    private static RoomResponse ToResponse(ConferenceRoom room) =>
-        new(room.Id, room.Name, room.Capacity, room.BaseHourlyRate,
-            room.Services.Select(service => new ServiceResponse(service.Id, service.Name, service.Price)).ToList());
 }

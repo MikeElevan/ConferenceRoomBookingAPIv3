@@ -3,6 +3,7 @@ using ConferenceRoomBookingAPIv3.Application.Services;
 using ConferenceRoomBookingAPIv3.Constants;
 using ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
+using ConferenceRoomBookingAPIv3.Controllers.Helpers;
 using ConferenceRoomBookingAPIv3.DomainModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -22,17 +23,7 @@ public sealed class BookingsController(BookingService service) : ControllerBase
         try
         {
             Booking booking = await service.CreateAsync(request.RoomId, request.StartsAt!.Value, request.DurationMinutes, request.ServiceIds, cancellationToken);
-            var response = new BookingResponse(
-                booking.Id,
-                booking.RoomId,
-                booking.StartsAt,
-                booking.EndsAt,
-                booking.RoomCost,
-                booking.ServicesCost,
-                booking.TotalCost,
-                booking.Services.Select(item => new ServiceResponse(item.Id, item.Name, item.Price)).ToList());
-
-            return StatusCode(StatusCodes.Status201Created, response);
+            return StatusCode(StatusCodes.Status201Created, BookingsHelper.ToResponse(booking));
         }
         catch (BookingException exception)
         {

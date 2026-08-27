@@ -70,11 +70,48 @@ public sealed class ConferenceRoomsApiTests : IDisposable
                 Assert.Equal(HttpStatusCode.NoContent, updateResponse.StatusCode);
             }
 
+            object patchRequest = new { capacity = 30 };
+            using (HttpContent patchContent = JsonContent.Create(patchRequest))
+            {
+                HttpResponseMessage patchResponse = await client.PatchAsync($"/api/v1/rooms/{roomId}", patchContent);
+                Assert.Equal(HttpStatusCode.NoContent, patchResponse.StatusCode);
+            }
+
+            HttpResponseMessage patchedRoomResponse = await client.GetAsync($"/api/v1/rooms/{roomId}");
+            JsonElement patchedRoom = await patchedRoomResponse.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(HttpStatusCode.OK, patchedRoomResponse.StatusCode);
+            Assert.Equal("Обновлённый зал", patchedRoom.GetProperty("name").GetString());
+            Assert.Equal(30, patchedRoom.GetProperty("capacity").GetInt32());
+            Assert.Equal(1500m, patchedRoom.GetProperty("baseHourlyRate").GetDecimal());
+            Assert.Equal(0, patchedRoom.GetProperty("services").GetArrayLength());
+
             HttpResponseMessage deleteResponse = await client.DeleteAsync($"/api/v1/rooms/{roomId}");
             Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
             HttpResponseMessage getResponse = await client.GetAsync($"/api/v1/rooms/{roomId}");
             Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task PatchRoom_WithUnknownId_ReturnsNotFound()
+    {
+        object patchRequest = new { name = "Новое имя" };
+
+        using (HttpContent content = JsonContent.Create(patchRequest))
+        {
+            HttpResponseMessage response = await client.PatchAsync($"/api/v1/rooms/{Guid.NewGuid()}", content);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task PatchRoom_WithEmptyBody_ReturnsBadRequest()
+    {
+        using (HttpContent content = JsonContent.Create(new { }))
+        {
+            HttpResponseMessage response = await client.PatchAsync($"/api/v1/rooms/{Guid.NewGuid()}", content);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         }
     }
 

@@ -58,6 +58,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         ConferenceRoom? existingRoom = await dbContext.Rooms
             .Include(item => item.Services)
             .SingleOrDefaultAsync(item => item.Id == room.Id, cancellationToken);
+
         if (existingRoom is null)
         {
             return false;
@@ -66,8 +67,16 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         existingRoom.Name = room.Name;
         existingRoom.Capacity = room.Capacity;
         existingRoom.BaseHourlyRate = room.BaseHourlyRate;
-        dbContext.RoomServices.RemoveRange(existingRoom.Services);
-        existingRoom.Services = room.Services;
+
+        HashSet<Guid> existingServiceIds = existingRoom.Services.Select(service => service.Id).ToHashSet();
+        bool replaceServices = room.Services.Count != existingRoom.Services.Count ||
+            room.Services.Any(service => !existingServiceIds.Contains(service.Id));
+        if (replaceServices)
+        {
+            dbContext.RoomServices.RemoveRange(existingRoom.Services);
+            existingRoom.Services = room.Services;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }

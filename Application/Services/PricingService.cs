@@ -39,7 +39,7 @@ public sealed class PricingService : IPricingService
 
     private static DateTimeOffset NextBoundary(DateTimeOffset value)
     {
-        var boundaries = new int[] { 6, 9, 12, 14, 18, 23, 24 }
+        IEnumerable<DateTime> boundaries = new int[] { 6, 9, 12, 14, 18, 23, 24 }
             .Select(hour => value.Date.AddHours(hour));
         DateTime next = boundaries.FirstOrDefault(boundary => boundary > value.DateTime);
 
