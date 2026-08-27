@@ -27,6 +27,7 @@ public sealed class BookingDbContext(DbContextOptions<BookingDbContext> options)
             entity.HasKey(service => service.Id);
             entity.Property(service => service.Name).IsRequired().HasMaxLength(100);
             entity.Property(service => service.Price).HasPrecision(18, 2);
+            entity.HasIndex("ConferenceRoomId", nameof(RoomService.Name)).IsUnique();
         });
 
         modelBuilder.Entity<Booking>(entity =>

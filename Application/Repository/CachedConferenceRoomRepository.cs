@@ -87,6 +87,19 @@ public sealed class CachedConferenceRoomRepository(
         return result;
     }
 
+    public async Task<bool> PatchRoomAsync(Guid id, Action<ConferenceRoom> patch, CancellationToken cancellationToken = default)
+    {
+        ValidateIdentifier(id, nameof(id));
+        ArgumentNullException.ThrowIfNull(patch);
+
+        bool result = await adapter.PatchRoomAsync(id, patch, cancellationToken);
+        if (result)
+        {
+            await InvalidateRoomsAsync(cancellationToken);
+        }
+        return result;
+    }
+
     public async Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));

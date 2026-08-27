@@ -42,7 +42,7 @@ public static class ConferenceRoomsHelper
 
         if (request.Services is not null)
         {
-            room.Services = ToServices(request.Services);
+            UpsertServices(room, request.Services);
         }
     }
 
@@ -56,6 +56,30 @@ public static class ConferenceRoomsHelper
             room.Capacity,
             room.BaseHourlyRate,
             room.Services.Select(ToServiceResponse).ToList());
+    }
+
+    private static void UpsertServices(ConferenceRoom room, IEnumerable<RoomServiceRequest> services)
+    {
+        foreach (RoomServiceRequest incoming in services)
+        {
+            string name = incoming.Name.Trim();
+            RoomService? existing = room.Services.FirstOrDefault(service =>
+                string.Equals(service.Name, name, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                existing.Name = name;
+                existing.Price = incoming.Price;
+                continue;
+            }
+
+            room.Services.Add(new RoomService
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                Price = incoming.Price
+            });
+        }
     }
 
     private static List<RoomService> ToServices(IEnumerable<RoomServiceRequest> services) =>

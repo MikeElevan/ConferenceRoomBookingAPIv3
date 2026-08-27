@@ -116,6 +116,109 @@ public sealed class ConferenceRoomsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task PatchRoom_UpsertsServicesByName()
+    {
+        object createRequest = new
+        {
+            name = "Зал с услугами",
+            capacity = 12,
+            baseHourlyRate = 900,
+            services = new object[]
+            {
+                new { name = "Экран", price = 150 },
+                new { name = "Wi-Fi", price = 300 }
+            }
+        };
+
+        using (HttpContent createContent = JsonContent.Create(createRequest))
+        {
+            HttpResponseMessage createResponse = await client.PostAsync("/api/v1/rooms", createContent);
+            JsonElement createdRoom = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+            Guid roomId = createdRoom.GetProperty("id").GetGuid();
+            Guid screenId = createdRoom.GetProperty("services").EnumerateArray()
+                .Single(service => service.GetProperty("name").GetString() == "Экран")
+                .GetProperty("id").GetGuid();
+            Guid wifiId = createdRoom.GetProperty("services").EnumerateArray()
+                .Single(service => service.GetProperty("name").GetString() == "Wi-Fi")
+                .GetProperty("id").GetGuid();
+
+            object patchRequest = new
+            {
+                services = new object[]
+                {
+                    new { name = "экран", price = 200 },
+                    new { name = "Звук", price = 700 }
+                }
+            };
+
+            using (HttpContent patchContent = JsonContent.Create(patchRequest))
+            {
+                HttpResponseMessage patchResponse = await client.PatchAsync($"/api/v1/rooms/{roomId}", patchContent);
+                Assert.Equal(HttpStatusCode.NoContent, patchResponse.StatusCode);
+            }
+
+            HttpResponseMessage getResponse = await client.GetAsync($"/api/v1/rooms/{roomId}");
+            JsonElement patchedRoom = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+            Dictionary<string, JsonElement> services = patchedRoom.GetProperty("services").EnumerateArray()
+                .ToDictionary(service => service.GetProperty("name").GetString()!, StringComparer.OrdinalIgnoreCase);
+
+            Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+            Assert.Equal(3, services.Count);
+            Assert.Equal(screenId, services["Экран"].GetProperty("id").GetGuid());
+            Assert.Equal(200m, services["Экран"].GetProperty("price").GetDecimal());
+            Assert.Equal(wifiId, services["Wi-Fi"].GetProperty("id").GetGuid());
+            Assert.Equal(300m, services["Wi-Fi"].GetProperty("price").GetDecimal());
+            Assert.Equal(700m, services["Звук"].GetProperty("price").GetDecimal());
+        }
+    }
+
+    [Fact]
+    public async Task PatchRoom_ConcurrentServiceUpserts_KeepAllServices()
+    {
+        object createRequest = new
+        {
+            name = "Зал для гонок",
+            capacity = 8,
+            baseHourlyRate = 500,
+            services = new object[]
+            {
+                new { name = "Экран", price = 150 }
+            }
+        };
+
+        using (HttpContent createContent = JsonContent.Create(createRequest))
+        {
+            HttpResponseMessage createResponse = await client.PostAsync("/api/v1/rooms", createContent);
+            JsonElement createdRoom = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+            Guid roomId = createdRoom.GetProperty("id").GetGuid();
+
+            Task<HttpResponseMessage> firstPatch = PatchServicesAsync(roomId, new { name = "Звук", price = 700 });
+            Task<HttpResponseMessage> secondPatch = PatchServicesAsync(roomId, new { name = "Wi-Fi", price = 300 });
+            HttpResponseMessage[] patchResponses = await Task.WhenAll(firstPatch, secondPatch);
+
+            Assert.All(patchResponses, response => Assert.Equal(HttpStatusCode.NoContent, response.StatusCode));
+
+            HttpResponseMessage getResponse = await client.GetAsync($"/api/v1/rooms/{roomId}");
+            JsonElement patchedRoom = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+            HashSet<string> serviceNames = patchedRoom.GetProperty("services").EnumerateArray()
+                .Select(service => service.GetProperty("name").GetString()!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+            Assert.Equal(3, serviceNames.Count);
+            Assert.Contains("Экран", serviceNames);
+            Assert.Contains("Звук", serviceNames);
+            Assert.Contains("Wi-Fi", serviceNames);
+        }
+    }
+
+    private async Task<HttpResponseMessage> PatchServicesAsync(Guid roomId, object service)
+    {
+        using HttpContent content = JsonContent.Create(new { services = new object[] { service } });
+        return await client.PatchAsync($"/api/v1/rooms/{roomId}", content);
+    }
+
+    [Fact]
     public async Task FindAvailable_WithValidInterval_ReturnsRooms()
     {
         DateTimeOffset startsAt = DateTimeOffset.UtcNow.AddHours(1);

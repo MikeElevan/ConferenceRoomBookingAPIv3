@@ -53,14 +53,7 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        ConferenceRoom? room = await repository.GetRoomAsync(id, cancellationToken);
-        if (room is null)
-        {
-            return NotFound();
-        }
-
-        ConferenceRoomsHelper.ApplyPatch(room, request);
-        if (!await repository.UpdateRoomAsync(room, cancellationToken))
+        if (!await repository.PatchRoomAsync(id, room => ConferenceRoomsHelper.ApplyPatch(room, request), cancellationToken))
         {
             return NotFound();
         }

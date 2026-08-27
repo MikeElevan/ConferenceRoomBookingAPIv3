@@ -101,6 +101,25 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         }
     }
 
+    public Task<bool> PatchRoomAsync(Guid id, Action<ConferenceRoom> patch, CancellationToken cancellationToken = default)
+    {
+        ValidateIdentifier(id, nameof(id));
+        ArgumentNullException.ThrowIfNull(patch);
+
+        lock (sync)
+        {
+            if (!rooms.TryGetValue(id, out ConferenceRoom? room))
+            {
+                return Task.FromResult(false);
+            }
+
+            ConferenceRoom updated = Clone(room);
+            patch(updated);
+            rooms[id] = updated;
+            return Task.FromResult(true);
+        }
+    }
+
     public Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));

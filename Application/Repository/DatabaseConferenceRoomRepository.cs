@@ -2,6 +2,7 @@ using ConferenceRoomBookingAPIv3.DomainModels;
 using ConferenceRoomBookingAPIv3.Infrastructure.Persistence;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ConferenceRoomBookingAPIv3.Application.Repository;
 
@@ -55,6 +56,9 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
     {
         ArgumentNullException.ThrowIfNull(room);
 
+        await using IDbContextTransaction transaction =
+            await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+
         ConferenceRoom? existingRoom = await dbContext.Rooms
             .Include(item => item.Services)
             .SingleOrDefaultAsync(item => item.Id == room.Id, cancellationToken);
@@ -67,17 +71,33 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         existingRoom.Name = room.Name;
         existingRoom.Capacity = room.Capacity;
         existingRoom.BaseHourlyRate = room.BaseHourlyRate;
-
-        HashSet<Guid> existingServiceIds = existingRoom.Services.Select(service => service.Id).ToHashSet();
-        bool replaceServices = room.Services.Count != existingRoom.Services.Count ||
-            room.Services.Any(service => !existingServiceIds.Contains(service.Id));
-        if (replaceServices)
-        {
-            dbContext.RoomServices.RemoveRange(existingRoom.Services);
-            existingRoom.Services = room.Services;
-        }
+        SyncServices(existingRoom, room.Services);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> PatchRoomAsync(Guid id, Action<ConferenceRoom> patch, CancellationToken cancellationToken = default)
+    {
+        ValidateIdentifier(id, nameof(id));
+        ArgumentNullException.ThrowIfNull(patch);
+
+        await using IDbContextTransaction transaction =
+            await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+
+        ConferenceRoom? existingRoom = await dbContext.Rooms
+            .Include(item => item.Services)
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+        if (existingRoom is null)
+        {
+            return false;
+        }
+
+        patch(existingRoom);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
 
@@ -135,6 +155,36 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
             await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return true;
+        }
+    }
+
+    private void SyncServices(ConferenceRoom existingRoom, IReadOnlyList<RoomService> incomingServices)
+    {
+        Dictionary<Guid, RoomService> incomingById = incomingServices.ToDictionary(service => service.Id);
+        List<RoomService> servicesToRemove = existingRoom.Services
+            .Where(service => !incomingById.ContainsKey(service.Id))
+            .ToList();
+
+        if (servicesToRemove.Count > 0)
+        {
+            dbContext.RoomServices.RemoveRange(servicesToRemove);
+            foreach (RoomService service in servicesToRemove)
+            {
+                existingRoom.Services.Remove(service);
+            }
+        }
+
+        foreach (RoomService existingService in existingRoom.Services)
+        {
+            RoomService incoming = incomingById[existingService.Id];
+            existingService.Name = incoming.Name;
+            existingService.Price = incoming.Price;
+        }
+
+        HashSet<Guid> existingIds = existingRoom.Services.Select(service => service.Id).ToHashSet();
+        foreach (RoomService incoming in incomingServices.Where(service => !existingIds.Contains(service.Id)))
+        {
+            existingRoom.Services.Add(incoming);
         }
     }
 
