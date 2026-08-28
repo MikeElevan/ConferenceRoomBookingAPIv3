@@ -8,7 +8,6 @@ public interface IConferenceRoomRepository
     Task<IReadOnlyList<ConferenceRoom>> GetAvailableRoomsAsync(DateTimeOffset startsAt, DateTimeOffset endsAt, int capacity, CancellationToken cancellationToken = default);
     Task<ConferenceRoom?> GetRoomAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ConferenceRoom> AddRoomAsync(ConferenceRoom room, CancellationToken cancellationToken = default);
-    Task<bool> UpdateRoomAsync(ConferenceRoom room, CancellationToken cancellationToken = default);
     Task<bool> PatchRoomAsync(Guid id, Action<ConferenceRoom> patch, CancellationToken cancellationToken = default);
     Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Booking>> GetBookingsAsync(Guid roomId, CancellationToken cancellationToken = default);

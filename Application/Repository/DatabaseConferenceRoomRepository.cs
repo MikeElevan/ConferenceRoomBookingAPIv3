@@ -1,6 +1,8 @@
 using ConferenceRoomBookingAPIv3.DomainModels;
 using ConferenceRoomBookingAPIv3.Infrastructure.Persistence;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
+using ConferenceRoomBookingAPIv3.Application;
+using ConferenceRoomBookingAPIv3.Constants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -52,53 +54,33 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         return room;
     }
 
-    public async Task<bool> UpdateRoomAsync(ConferenceRoom room, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(room);
-
-        await using IDbContextTransaction transaction =
-            await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
-
-        ConferenceRoom? existingRoom = await dbContext.Rooms
-            .Include(item => item.Services)
-            .SingleOrDefaultAsync(item => item.Id == room.Id, cancellationToken);
-
-        if (existingRoom is null)
-        {
-            return false;
-        }
-
-        existingRoom.Name = room.Name;
-        existingRoom.Capacity = room.Capacity;
-        existingRoom.BaseHourlyRate = room.BaseHourlyRate;
-        SyncServices(existingRoom, room.Services);
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return true;
-    }
-
     public async Task<bool> PatchRoomAsync(Guid id, Action<ConferenceRoom> patch, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));
         ArgumentNullException.ThrowIfNull(patch);
 
-        await using IDbContextTransaction transaction =
-            await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
-
-        ConferenceRoom? existingRoom = await dbContext.Rooms
-            .Include(item => item.Services)
-            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-
-        if (existingRoom is null)
+        // EnableRetryOnFailure requires every multi-statement unit of work (transaction included)
+        // to run through the resiliency-aware execution strategy, or EF Core throws at startup.
+        IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            return false;
-        }
+            await using IDbContextTransaction transaction =
+                await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
-        patch(existingRoom);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return true;
+            ConferenceRoom? existingRoom = await dbContext.Rooms
+                .Include(item => item.Services)
+                .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+            if (existingRoom is null)
+            {
+                return false;
+            }
+
+            patch(existingRoom);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        });
     }
 
     public async Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default)
@@ -109,6 +91,18 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         if (room is null)
         {
             return false;
+        }
+
+        // Booking -> Room is Restrict, so the database itself would reject this delete with
+        // an FK-violation error once bookings exist. Checking up front turns that into a clean,
+        // typed 409 instead of an unhandled SqlException/DbUpdateException surfacing as a 500 —
+        // and it keeps Room -> Services staying Cascade safe: a room can only be deleted once it
+        // has zero bookings, which is also the only state in which none of its services can be
+        // referenced by a BookingServices row.
+        bool hasBookings = await dbContext.Bookings.AnyAsync(booking => booking.RoomId == id, cancellationToken);
+        if (hasBookings)
+        {
+            throw new BookingException(ErrorCode.RoomHasBookings, ErrorMessages.RoomHasBookings);
         }
 
         dbContext.Rooms.Remove(room);
@@ -134,8 +128,12 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         ArgumentNullException.ThrowIfNull(booking);
         ValidateBooking(booking);
 
-        await using (Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken))
+        IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
+            await using IDbContextTransaction transaction =
+                await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+
             bool hasConflict = await dbContext.Bookings.AnyAsync(existing =>
                 existing.RoomId == booking.RoomId &&
                 existing.StartsAt < booking.EndsAt &&
@@ -155,37 +153,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
             await dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return true;
-        }
-    }
-
-    private void SyncServices(ConferenceRoom existingRoom, IReadOnlyList<RoomService> incomingServices)
-    {
-        Dictionary<Guid, RoomService> incomingById = incomingServices.ToDictionary(service => service.Id);
-        List<RoomService> servicesToRemove = existingRoom.Services
-            .Where(service => !incomingById.ContainsKey(service.Id))
-            .ToList();
-
-        if (servicesToRemove.Count > 0)
-        {
-            dbContext.RoomServices.RemoveRange(servicesToRemove);
-            foreach (RoomService service in servicesToRemove)
-            {
-                existingRoom.Services.Remove(service);
-            }
-        }
-
-        foreach (RoomService existingService in existingRoom.Services)
-        {
-            RoomService incoming = incomingById[existingService.Id];
-            existingService.Name = incoming.Name;
-            existingService.Price = incoming.Price;
-        }
-
-        HashSet<Guid> existingIds = existingRoom.Services.Select(service => service.Id).ToHashSet();
-        foreach (RoomService incoming in incomingServices.Where(service => !existingIds.Contains(service.Id)))
-        {
-            existingRoom.Services.Add(incoming);
-        }
+        });
     }
 
     private static void ValidateIdentifier(Guid identifier, string parameterName)

@@ -35,7 +35,7 @@ public sealed class ConferenceRoomsApiTests : IDisposable
     }
 
     [Fact]
-    public async Task CreateUpdateAndDeleteRoom_UsesExpectedHttpContract()
+    public async Task CreatePatchAndDeleteRoom_UsesExpectedHttpContract()
     {
         object createRequest = new
         {
@@ -56,21 +56,12 @@ public sealed class ConferenceRoomsApiTests : IDisposable
 
             Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
 
-            object updateRequest = new
+            object patchRequest = new
             {
                 name = "Обновлённый зал",
-                capacity = 25,
-                baseHourlyRate = 1500,
-                services = Array.Empty<object>()
+                capacity = 30,
+                baseHourlyRate = 1500
             };
-
-            using (HttpContent updateContent = JsonContent.Create(updateRequest))
-            {
-                HttpResponseMessage updateResponse = await client.PutAsync($"/api/v1/rooms/{roomId}", updateContent);
-                Assert.Equal(HttpStatusCode.NoContent, updateResponse.StatusCode);
-            }
-
-            object patchRequest = new { capacity = 30 };
             using (HttpContent patchContent = JsonContent.Create(patchRequest))
             {
                 HttpResponseMessage patchResponse = await client.PatchAsync($"/api/v1/rooms/{roomId}", patchContent);
@@ -83,7 +74,7 @@ public sealed class ConferenceRoomsApiTests : IDisposable
             Assert.Equal("Обновлённый зал", patchedRoom.GetProperty("name").GetString());
             Assert.Equal(30, patchedRoom.GetProperty("capacity").GetInt32());
             Assert.Equal(1500m, patchedRoom.GetProperty("baseHourlyRate").GetDecimal());
-            Assert.Equal(0, patchedRoom.GetProperty("services").GetArrayLength());
+            Assert.Equal(1, patchedRoom.GetProperty("services").GetArrayLength());
 
             HttpResponseMessage deleteResponse = await client.DeleteAsync($"/api/v1/rooms/{roomId}");
             Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
@@ -91,6 +82,15 @@ public sealed class ConferenceRoomsApiTests : IDisposable
             HttpResponseMessage getResponse = await client.GetAsync($"/api/v1/rooms/{roomId}");
             Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task PutRoom_IsNotSupported()
+    {
+        using HttpContent content = JsonContent.Create(new { });
+        HttpResponseMessage response = await client.PutAsync($"/api/v1/rooms/{Guid.NewGuid()}", content);
+
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
     }
 
     [Fact]
@@ -248,6 +248,42 @@ public sealed class ConferenceRoomsApiTests : IDisposable
             HttpResponseMessage response = await client.PostAsync("/api/v1/rooms", content);
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         }
+    }
+
+    [Fact]
+    public async Task DeleteRoom_WithExistingBookings_ReturnsConflict()
+    {
+        object createRequest = new
+        {
+            name = "Зал с бронированием",
+            capacity = 15,
+            baseHourlyRate = 1000,
+            services = Array.Empty<object>()
+        };
+
+        using HttpContent createContent = JsonContent.Create(createRequest);
+        HttpResponseMessage createResponse = await client.PostAsync("/api/v1/rooms", createContent);
+        JsonElement createdRoom = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Guid roomId = createdRoom.GetProperty("id").GetGuid();
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        object bookingRequest = new
+        {
+            roomId,
+            startsAt = DateTimeOffset.UtcNow.AddHours(10),
+            durationMinutes = 60,
+            serviceIds = Array.Empty<Guid>()
+        };
+
+        using HttpContent bookingContent = JsonContent.Create(bookingRequest);
+        HttpResponseMessage bookingResponse = await client.PostAsync("/api/v1/bookings", bookingContent);
+        Assert.Equal(HttpStatusCode.Created, bookingResponse.StatusCode);
+
+        HttpResponseMessage deleteResponse = await client.DeleteAsync($"/api/v1/rooms/{roomId}");
+        Assert.Equal(HttpStatusCode.Conflict, deleteResponse.StatusCode);
+
+        HttpResponseMessage getResponse = await client.GetAsync($"/api/v1/rooms/{roomId}");
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
     }
 
     public void Dispose()

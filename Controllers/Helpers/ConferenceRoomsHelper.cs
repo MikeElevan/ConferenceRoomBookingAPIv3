@@ -6,13 +6,13 @@ namespace ConferenceRoomBookingAPIv3.Controllers.Helpers;
 
 public static class ConferenceRoomsHelper
 {
-    public static ConferenceRoom ToEntity(RoomRequest request, Guid? id = null)
+    public static ConferenceRoom ToEntity(RoomRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         return new ConferenceRoom
         {
-            Id = id ?? Guid.NewGuid(),
+            Id = Guid.NewGuid(),
             Name = request.Name.Trim(),
             Capacity = request.Capacity,
             BaseHourlyRate = request.BaseHourlyRate,

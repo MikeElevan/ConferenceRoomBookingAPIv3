@@ -1,5 +1,7 @@
 using ConferenceRoomBookingAPIv3.DomainModels;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
+using ConferenceRoomBookingAPIv3.Application;
+using ConferenceRoomBookingAPIv3.Constants;
 
 namespace ConferenceRoomBookingAPIv3.Application.Repository;
 
@@ -85,22 +87,6 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         }
     }
 
-    public Task<bool> UpdateRoomAsync(ConferenceRoom room, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(room);
-
-        lock (sync)
-        {
-            if (!rooms.ContainsKey(room.Id))
-            {
-                return Task.FromResult(false);
-            }
-
-            rooms[room.Id] = Clone(room);
-            return Task.FromResult(true);
-        }
-    }
-
     public Task<bool> PatchRoomAsync(Guid id, Action<ConferenceRoom> patch, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));
@@ -126,6 +112,16 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
 
         lock (sync)
         {
+            if (!rooms.ContainsKey(id))
+            {
+                return Task.FromResult(false);
+            }
+
+            if (bookings.Any(booking => booking.RoomId == id))
+            {
+                throw new BookingException(ErrorCode.RoomHasBookings, ErrorMessages.RoomHasBookings);
+            }
+
             return Task.FromResult(rooms.Remove(id));
         }
     }

@@ -1,5 +1,7 @@
+using ConferenceRoomBookingAPIv3.Application;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
 using ConferenceRoomBookingAPIv3.Application.Services;
+using ConferenceRoomBookingAPIv3.Constants;
 using ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
 using ConferenceRoomBookingAPIv3.Controllers.Helpers;
@@ -33,20 +35,6 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
         return CreatedAtAction(nameof(Get), new { id = room.Id }, ConferenceRoomsHelper.ToResponse(room));
     }
 
-    [HttpPut("{id:guid}")]
-    [Authorize(Policy = "Administrator")]
-    public async Task<ActionResult> Update(Guid id, RoomRequest request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (!await repository.UpdateRoomAsync(ConferenceRoomsHelper.ToEntity(request, id), cancellationToken))
-        {
-            return NotFound();
-        }
-
-        return NoContent();
-    }
-
     [HttpPatch("{id:guid}")]
     [Authorize(Policy = "Administrator")]
     public async Task<ActionResult> Patch(Guid id, RoomPatchRequest request, CancellationToken cancellationToken)
@@ -63,8 +51,17 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
 
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = "Administrator")]
-    public async Task<ActionResult> Delete(Guid id, CancellationToken cancellationToken) =>
-        await repository.DeleteRoomAsync(id, cancellationToken) ? NoContent() : NotFound();
+    public async Task<ActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await repository.DeleteRoomAsync(id, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (BookingException exception) when (exception.Code == ErrorCode.RoomHasBookings)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: exception.Code.ToValue(), detail: exception.Message);
+        }
+    }
 
     [HttpGet("available")]
     public async Task<ActionResult<IReadOnlyList<RoomResponse>>> FindAvailable([FromQuery] AvailabilityRequest request, CancellationToken cancellationToken)

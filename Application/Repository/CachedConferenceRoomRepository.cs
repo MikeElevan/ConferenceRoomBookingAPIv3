@@ -75,18 +75,6 @@ public sealed class CachedConferenceRoomRepository(
         return result;
     }
 
-    public async Task<bool> UpdateRoomAsync(ConferenceRoom room, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(room);
-
-        bool result = await adapter.UpdateRoomAsync(room, cancellationToken);
-        if (result)
-        {
-            await InvalidateRoomsAsync(cancellationToken);
-        }
-        return result;
-    }
-
     public async Task<bool> PatchRoomAsync(Guid id, Action<ConferenceRoom> patch, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));
