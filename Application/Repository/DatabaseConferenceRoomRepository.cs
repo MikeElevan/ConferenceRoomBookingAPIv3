@@ -1,8 +1,7 @@
+using ConferenceRoomBookingAPIv3.Application.Interfaces;
+using ConferenceRoomBookingAPIv3.Constants;
 using ConferenceRoomBookingAPIv3.DomainModels;
 using ConferenceRoomBookingAPIv3.Infrastructure.Persistence;
-using ConferenceRoomBookingAPIv3.Application.Interfaces;
-using ConferenceRoomBookingAPIv3.Application;
-using ConferenceRoomBookingAPIv3.Constants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -20,11 +19,11 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         await dbContext.Rooms
             .AsNoTracking()
             .Include(room => room.Services)
-            .Where(room => room.Capacity >= capacity)
+            .Where(room => room.Capacity>=capacity)
             .Where(room => !dbContext.Bookings.Any(booking =>
-                booking.RoomId == room.Id &&
-                booking.StartsAt < endsAt &&
-                startsAt < booking.EndsAt))
+                booking.RoomId==room.Id&&
+                booking.StartsAt<endsAt&&
+                startsAt<booking.EndsAt))
             .ToListAsync(cancellationToken);
 
     public Task<ConferenceRoom?> GetRoomAsync(Guid id, CancellationToken cancellationToken = default)
@@ -35,19 +34,15 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
 
     public async Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
-        if (to <= from)
+        if (to<=from)
         {
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
         }
 
-        // Pushed into the SQL WHERE clause instead of pulling every booking ever made into
-        // application memory and filtering with LINQ-to-Objects. A report over one day used to
-        // cost a full table scan of Bookings regardless of range size — this scales with the
-        // number of bookings that actually overlap [from, to), not with total booking history.
         return await dbContext.Bookings
             .AsNoTracking()
             .Include(booking => booking.Services)
-            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
+            .Where(booking => booking.StartsAt<to&&from<booking.EndsAt)
             .ToListAsync(cancellationToken);
     }
 
@@ -55,7 +50,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         dbContext.Rooms
             .AsNoTracking()
             .Include(room => room.Services)
-            .SingleOrDefaultAsync(room => room.Id == id, cancellationToken);
+            .SingleOrDefaultAsync(room => room.Id==id, cancellationToken);
 
     public async Task<ConferenceRoom> AddRoomAsync(ConferenceRoom room, CancellationToken cancellationToken = default)
     {
@@ -76,23 +71,12 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
-            // ReadCommitted, not Serializable: the one invariant this method must protect —
-            // "no two services on the same room share a name" — is already enforced by the
-            // (ConferenceRoomId, Name) unique index regardless of isolation level, since unique
-            // constraints are checked at write time, not governed by MVCC snapshot rules. Two
-            // concurrent PATCHes upserting different service names to the same room don't touch
-            // overlapping rows and can safely run concurrently. Serializable would instead take
-            // range locks across the whole read set for no additional correctness benefit here —
-            // exactly the kind of unnecessary contention that produces the deadlocks under
-            // concurrent load. (Contrast with TryAddBookingAsync below, where "no overlapping
-            // booking" is a genuine range invariant with no equivalent index — that one keeps
-            // Serializable because it actually needs it.)
             await using IDbContextTransaction transaction =
                 await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
 
             ConferenceRoom? existingRoom = await dbContext.Rooms
                 .Include(item => item.Services)
-                .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+                .SingleOrDefaultAsync(item => item.Id==id, cancellationToken);
 
             if (existingRoom is null)
             {
@@ -107,11 +91,6 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
             }
             catch (DbUpdateException exception) when (IsUniqueServiceNameViolation(exception))
             {
-                // Two concurrent PATCHes each upserting a *new* service with the same name on
-                // the same room: under ReadCommitted neither sees the other's still-uncommitted
-                // insert, both attempt an insert, and the unique index rejects the second one at
-                // the database level. Translate that race into the same typed conflict response
-                // the rest of the API already uses, instead of an unhandled 500.
                 throw new BookingException(ErrorCode.ServiceNameConflict, ErrorMessages.ServiceNameConflict);
             }
 
@@ -121,26 +100,20 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
     }
 
     private static bool IsUniqueServiceNameViolation(DbUpdateException exception) =>
-        exception.InnerException is Microsoft.Data.SqlClient.SqlException sqlException &&
+        exception.InnerException is Microsoft.Data.SqlClient.SqlException sqlException&&
         sqlException.Errors.Cast<Microsoft.Data.SqlClient.SqlError>().Any(error => error.Number is 2601 or 2627);
 
     public async Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));
 
-        ConferenceRoom? room = await dbContext.Rooms.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        ConferenceRoom? room = await dbContext.Rooms.SingleOrDefaultAsync(item => item.Id==id, cancellationToken);
         if (room is null)
         {
             return false;
         }
 
-        // Booking -> Room is Restrict, so the database itself would reject this delete with
-        // an FK-violation error once bookings exist. Checking up front turns that into a clean,
-        // typed 409 instead of an unhandled SqlException/DbUpdateException surfacing as a 500 —
-        // and it keeps Room -> Services staying Cascade safe: a room can only be deleted once it
-        // has zero bookings, which is also the only state in which none of its services can be
-        // referenced by a BookingServices row.
-        bool hasBookings = await dbContext.Bookings.AnyAsync(booking => booking.RoomId == id, cancellationToken);
+        bool hasBookings = await dbContext.Bookings.AnyAsync(booking => booking.RoomId==id, cancellationToken);
         if (hasBookings)
         {
             throw new BookingException(ErrorCode.RoomHasBookings, ErrorMessages.RoomHasBookings);
@@ -161,7 +134,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         await dbContext.Bookings
             .AsNoTracking()
             .Include(booking => booking.Services)
-            .Where(booking => booking.RoomId == roomId)
+            .Where(booking => booking.RoomId==roomId)
             .ToListAsync(cancellationToken);
 
     public async Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
@@ -176,9 +149,9 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
                 await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
             bool hasConflict = await dbContext.Bookings.AnyAsync(existing =>
-                existing.RoomId == booking.RoomId &&
-                existing.StartsAt < booking.EndsAt &&
-                booking.StartsAt < existing.EndsAt, cancellationToken);
+                existing.RoomId==booking.RoomId&&
+                existing.StartsAt<booking.EndsAt&&
+                booking.StartsAt<existing.EndsAt, cancellationToken);
 
             if (hasConflict)
             {
@@ -187,7 +160,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
 
             foreach (RoomService service in booking.Services)
             {
-                dbContext.Entry(service).State = EntityState.Unchanged;
+                dbContext.Entry(service).State=EntityState.Unchanged;
             }
 
             dbContext.Bookings.Add(booking);
@@ -199,7 +172,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
 
     private static void ValidateIdentifier(Guid identifier, string parameterName)
     {
-        if (identifier == Guid.Empty)
+        if (identifier==Guid.Empty)
         {
             throw new ArgumentException("The identifier cannot be empty.", parameterName);
         }
@@ -208,7 +181,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
     private static void ValidateBooking(Booking booking)
     {
         ValidateIdentifier(booking.RoomId, nameof(booking.RoomId));
-        if (booking.EndsAt <= booking.StartsAt)
+        if (booking.EndsAt<=booking.StartsAt)
         {
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(booking));
         }

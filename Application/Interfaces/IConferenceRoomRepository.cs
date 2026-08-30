@@ -2,12 +2,6 @@ using ConferenceRoomBookingAPIv3.DomainModels;
 
 namespace ConferenceRoomBookingAPIv3.Application.Interfaces;
 
-/// <summary>
-/// Persistence operations for the "conference room" aggregate only. Deliberately excludes
-/// booking operations — a consumer that only ever manages rooms (e.g. <c>ConferenceRoomsController</c>'s
-/// CRUD actions) shouldn't have to depend on, mock, or be recompiled for booking concerns it
-/// never touches. See <see cref="IBookingRepository"/> for the booking aggregate.
-/// </summary>
 public interface IConferenceRoomRepository
 {
     Task<IReadOnlyList<ConferenceRoom>> GetRoomsAsync(CancellationToken cancellationToken = default);

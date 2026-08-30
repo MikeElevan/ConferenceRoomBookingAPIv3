@@ -160,12 +160,6 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
                 return Task.FromResult(false);
             }
 
-            // Store a private copy rather than the caller's own instance. Booking.Services is a
-            // mutable List<RoomService> (EF Core needs that to populate the many-to-many
-            // navigation) — without cloning, a reference to this exact object would keep
-            // escaping through every GetBookingsAsync/GetBookingsInRangeAsync call below, and any
-            // consumer mutating .Services on what it thinks is "its own" result would silently
-            // corrupt shared state without ever going through this lock.
             bookings.Add(CloneBooking(booking));
             return Task.FromResult(true);
         }
