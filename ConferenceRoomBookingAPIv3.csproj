@@ -11,10 +11,12 @@
 
   <ItemGroup>
     <None Include="Tests\ConferenceRoomBookingAPIv3.IntegrationTests.csproj" />
+    <None Include="UnitTests\ConferenceRoomBookingAPIv3.UnitTests.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="Tests/**/*.cs" />
+    <Compile Remove="UnitTests/**/*.cs" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.11" />
