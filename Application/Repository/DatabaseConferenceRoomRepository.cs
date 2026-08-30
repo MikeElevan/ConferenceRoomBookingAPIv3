@@ -19,11 +19,11 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
         await dbContext.Rooms
             .AsNoTracking()
             .Include(room => room.Services)
-            .Where(room => room.Capacity>=capacity)
+            .Where(room => room.Capacity >= capacity)
             .Where(room => !dbContext.Bookings.Any(booking =>
-                booking.RoomId==room.Id&&
-                booking.StartsAt<endsAt&&
-                startsAt<booking.EndsAt))
+                booking.RoomId == room.Id &&
+                booking.StartsAt < endsAt &&
+                startsAt < booking.EndsAt))
             .ToListAsync(cancellationToken);
 
     public Task<ConferenceRoom?> GetRoomAsync(Guid id, CancellationToken cancellationToken = default)
@@ -34,7 +34,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
 
     public async Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
-        if (to<=from)
+        if (to <= from)
         {
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
         }
@@ -42,7 +42,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
         return await dbContext.Bookings
             .AsNoTracking()
             .Include(booking => booking.Services)
-            .Where(booking => booking.StartsAt<to&&from<booking.EndsAt)
+            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
             .ToListAsync(cancellationToken);
     }
 
@@ -50,7 +50,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
         dbContext.Rooms
             .AsNoTracking()
             .Include(room => room.Services)
-            .SingleOrDefaultAsync(room => room.Id==id, cancellationToken);
+            .SingleOrDefaultAsync(room => room.Id == id, cancellationToken);
 
     public async Task<ConferenceRoom> AddRoomAsync(ConferenceRoom room, CancellationToken cancellationToken = default)
     {
@@ -68,15 +68,23 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
 
         // EnableRetryOnFailure requires every multi-statement unit of work (transaction included)
         // to run through the resiliency-aware execution strategy, or EF Core throws at startup.
+        // A fresh DbContext per attempt (rather than the shared, request-scoped one) matters here
+        // specifically: UpsertServices adds new RoomService entries onto an already-tracked
+        // ConferenceRoom. If SaveChangesAsync fails transiently and the strategy retries the same
+        // delegate against the shared context, the still-tracked "Added" entities from the failed
+        // attempt would still be there — patch() runs again and appends the same new service a
+        // second time. A throwaway context per attempt means each retry starts from a clean read,
+        // matching the pattern DeleteRoomAsync and TryAddBookingAsync already use below.
         IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
+            await using BookingDbContext attempt = await contextFactory.CreateDbContextAsync(cancellationToken);
             await using IDbContextTransaction transaction =
-                await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+                await attempt.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
 
-            ConferenceRoom? existingRoom = await dbContext.Rooms
+            ConferenceRoom? existingRoom = await attempt.Rooms
                 .Include(item => item.Services)
-                .SingleOrDefaultAsync(item => item.Id==id, cancellationToken);
+                .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
 
             if (existingRoom is null)
             {
@@ -87,7 +95,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
 
             try
             {
-                await dbContext.SaveChangesAsync(cancellationToken);
+                await attempt.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException exception) when (IsUniqueServiceNameViolation(exception))
             {
@@ -100,7 +108,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
     }
 
     private static bool IsUniqueServiceNameViolation(DbUpdateException exception) =>
-        exception.InnerException is Microsoft.Data.SqlClient.SqlException sqlException&&
+        exception.InnerException is Microsoft.Data.SqlClient.SqlException sqlException &&
         sqlException.Errors.Cast<Microsoft.Data.SqlClient.SqlError>().Any(error => error.Number is 2601 or 2627);
 
     public async Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default)
@@ -111,10 +119,13 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
         {
             await using BookingDbContext attempt = await contextFactory.CreateDbContextAsync(cancellationToken);
             await using IDbContextTransaction transaction = await attempt.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
-            ConferenceRoom? room = await attempt.Rooms.SingleOrDefaultAsync(item => item.Id==id, cancellationToken);
-            if (room is null) return false;
+            ConferenceRoom? room = await attempt.Rooms.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+            if (room is null)
+            {
+                return false;
+            }
 
-            if (await attempt.Bookings.AnyAsync(booking => booking.RoomId==id, cancellationToken))
+            if (await attempt.Bookings.AnyAsync(booking => booking.RoomId == id, cancellationToken))
             {
                 throw new BookingException(ErrorCode.RoomHasBookings, ErrorMessages.RoomHasBookings);
             }
@@ -144,7 +155,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
         await dbContext.Bookings
             .AsNoTracking()
             .Include(booking => booking.Services)
-            .Where(booking => booking.RoomId==roomId)
+            .Where(booking => booking.RoomId == roomId)
             .ToListAsync(cancellationToken);
 
     public async Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
@@ -160,9 +171,9 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
                 await attempt.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
             bool hasConflict = await attempt.Bookings.AnyAsync(existing =>
-                existing.RoomId==booking.RoomId&&
-                existing.StartsAt<booking.EndsAt&&
-                booking.StartsAt<existing.EndsAt, cancellationToken);
+                existing.RoomId == booking.RoomId &&
+                existing.StartsAt < booking.EndsAt &&
+                booking.StartsAt < existing.EndsAt, cancellationToken);
 
             if (hasConflict)
             {
@@ -178,7 +189,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
 
     private static void ValidateIdentifier(Guid identifier, string parameterName)
     {
-        if (identifier==Guid.Empty)
+        if (identifier == Guid.Empty)
         {
             throw new ArgumentException("The identifier cannot be empty.", parameterName);
         }
@@ -187,7 +198,7 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
     private static void ValidateBooking(Booking booking)
     {
         ValidateIdentifier(booking.RoomId, nameof(booking.RoomId));
-        if (booking.EndsAt<=booking.StartsAt)
+        if (booking.EndsAt <= booking.StartsAt)
         {
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(booking));
         }

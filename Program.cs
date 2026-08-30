@@ -15,7 +15,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 PersistenceOptions persistenceOptions = builder.Configuration
     .GetSection(PersistenceOptions.SectionName)
-    .Get<PersistenceOptions>()??new();
+    .Get<PersistenceOptions>() ?? new();
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
@@ -37,8 +37,8 @@ else
 {
     SecurityOptions securityOptions = builder.Configuration
         .GetSection(SecurityOptions.SectionName)
-        .Get<SecurityOptions>()??throw new InvalidOperationException("Security configuration is missing.");
-    if (string.IsNullOrWhiteSpace(securityOptions.Authority)||string.IsNullOrWhiteSpace(securityOptions.Audience))
+        .Get<SecurityOptions>() ?? throw new InvalidOperationException("Security configuration is missing.");
+    if (string.IsNullOrWhiteSpace(securityOptions.Authority) || string.IsNullOrWhiteSpace(securityOptions.Audience))
     {
         throw new InvalidOperationException("Security:Authority and Security:Audience must be configured.");
     }
@@ -46,9 +46,9 @@ else
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            options.Authority=securityOptions.Authority;
-            options.Audience=securityOptions.Audience;
-            options.RequireHttpsMetadata=securityOptions.RequireHttpsMetadata;
+            options.Authority = securityOptions.Authority;
+            options.Audience = securityOptions.Audience;
+            options.RequireHttpsMetadata = securityOptions.RequireHttpsMetadata;
         });
 }
 builder.Services.AddAuthorization(options =>
@@ -62,7 +62,7 @@ builder.Services.Configure<PricingOptions>(builder.Configuration.GetSection(Pric
 if (persistenceOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
 {
     string connectionString = builder.Configuration.GetConnectionString(persistenceOptions.ConnectionStringName)
-        ??throw new InvalidOperationException($"Connection string '{persistenceOptions.ConnectionStringName}' is not configured.");
+        ?? throw new InvalidOperationException($"Connection string '{persistenceOptions.ConnectionStringName}' is not configured.");
 
     builder.Services.AddDbContext<BookingDbContext>(options => options.UseSqlServer(connectionString, sqlServerOptions =>
         sqlServerOptions.EnableRetryOnFailure(
@@ -95,14 +95,14 @@ builder.Services.AddScoped<BookingService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddRateLimiter(options =>
 {
-    options.RejectionStatusCode=StatusCodes.Status429TooManyRequests;
-    options.GlobalLimiter=PartitionedRateLimiter.Create<HttpContext, string>(context =>
-         RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString()??"unknown", _ => new FixedWindowRateLimiterOptions
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+         RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
          {
-             PermitLimit=100,
-             Window=TimeSpan.FromMinutes(1),
-             QueueLimit=0,
-             AutoReplenishment=true
+             PermitLimit = 100,
+             Window = TimeSpan.FromMinutes(1),
+             QueueLimit = 0,
+             AutoReplenishment = true
          }));
 });
 
@@ -134,9 +134,9 @@ app.UseExceptionHandler();
 app.UseHttpsRedirection();
 app.UseRequestLocalization(new RequestLocalizationOptions
 {
-    DefaultRequestCulture=new RequestCulture(CultureInfo.InvariantCulture),
-    SupportedCultures=new List<CultureInfo> { CultureInfo.InvariantCulture },
-    SupportedUICultures=new List<CultureInfo> { CultureInfo.InvariantCulture }
+    DefaultRequestCulture = new RequestCulture(CultureInfo.InvariantCulture),
+    SupportedCultures = new List<CultureInfo> { CultureInfo.InvariantCulture },
+    SupportedUICultures = new List<CultureInfo> { CultureInfo.InvariantCulture }
 });
 app.UseRateLimiter();
 app.UseAuthentication();

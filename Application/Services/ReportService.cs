@@ -1,4 +1,5 @@
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
+using ConferenceRoomBookingAPIv3.Constants;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
 using ConferenceRoomBookingAPIv3.DomainModels;
 
@@ -6,17 +7,15 @@ namespace ConferenceRoomBookingAPIv3.Application.Services;
 
 public sealed class ReportService(IConferenceRoomRepository roomRepository, IBookingRepository bookingRepository)
 {
-    private const int MaximumRangeDays = 366;
-
     public async Task<BookingReportResponse> GetBookingReportAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
         if (to <= from)
         {
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
         }
-        if (to - from > TimeSpan.FromDays(MaximumRangeDays))
+        if (to - from > TimeSpan.FromDays(ReportLimits.MaximumRangeDays))
         {
-            throw new ArgumentException($"The report range must not exceed {MaximumRangeDays} days.", nameof(to));
+            throw new ArgumentException($"The report range must not exceed {ReportLimits.MaximumRangeDays} days.", nameof(to));
         }
 
         IReadOnlyList<ConferenceRoom> rooms = await roomRepository.GetRoomsAsync(cancellationToken);

@@ -1,6 +1,4 @@
-using ConferenceRoomBookingAPIv3.Application;
 using ConferenceRoomBookingAPIv3.Application.Services;
-using ConferenceRoomBookingAPIv3.Constants;
 using ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
 using Microsoft.AspNetCore.Authorization;
