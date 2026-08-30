@@ -1,7 +1,5 @@
-using ConferenceRoomBookingAPIv3.Application;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
 using ConferenceRoomBookingAPIv3.Application.Services;
-using ConferenceRoomBookingAPIv3.Constants;
 using ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
 using ConferenceRoomBookingAPIv3.Controllers.Helpers;
@@ -41,16 +39,9 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        try
+        if (!await repository.PatchRoomAsync(id, room => ConferenceRoomsHelper.ApplyPatch(room, request), cancellationToken))
         {
-            if (!await repository.PatchRoomAsync(id, room => ConferenceRoomsHelper.ApplyPatch(room, request), cancellationToken))
-            {
-                return NotFound();
-            }
-        }
-        catch (BookingException exception) when (exception.Code == ErrorCode.ServiceNameConflict)
-        {
-            return Problem(statusCode: StatusCodes.Status409Conflict, title: exception.Code.ToValue(), detail: exception.Message);
+            return NotFound();
         }
 
         return NoContent();
@@ -60,14 +51,7 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
     [Authorize(Policy = "Administrator")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        try
-        {
-            return await repository.DeleteRoomAsync(id, cancellationToken) ? NoContent() : NotFound();
-        }
-        catch (BookingException exception) when (exception.Code == ErrorCode.RoomHasBookings)
-        {
-            return Problem(statusCode: StatusCodes.Status409Conflict, title: exception.Code.ToValue(), detail: exception.Message);
-        }
+        return await repository.DeleteRoomAsync(id, cancellationToken) ? NoContent() : NotFound();
     }
 
     [HttpGet("available")]

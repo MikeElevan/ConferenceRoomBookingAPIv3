@@ -5,7 +5,7 @@ namespace ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 public sealed class BookingRequest : IValidatableObject
 {
     [Required]
-    public Guid RoomId { get; init; }
+    public Guid? RoomId { get; init; }
 
     [Required]
     public DateTimeOffset? StartsAt { get; init; }

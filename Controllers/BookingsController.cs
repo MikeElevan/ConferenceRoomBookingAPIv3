@@ -1,6 +1,4 @@
-using ConferenceRoomBookingAPIv3.Application;
 using ConferenceRoomBookingAPIv3.Application.Services;
-using ConferenceRoomBookingAPIv3.Constants;
 using ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
 using ConferenceRoomBookingAPIv3.Controllers.Helpers;
@@ -20,19 +18,7 @@ public sealed class BookingsController(BookingService service) : ControllerBase
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        try
-        {
-            Booking booking = await service.CreateAsync(request.RoomId, request.StartsAt!.Value, request.DurationMinutes, request.ServiceIds, cancellationToken);
-            return StatusCode(StatusCodes.Status201Created, BookingsHelper.ToResponse(booking));
-        }
-        catch (BookingException exception)
-        {
-            return exception.Code switch
-            {
-                ErrorCode.RoomNotFound or ErrorCode.ServiceNotFound => Problem(statusCode: StatusCodes.Status404NotFound, title: exception.Code.ToValue(), detail: exception.Message),
-                ErrorCode.BookingConflict => Problem(statusCode: StatusCodes.Status409Conflict, title: exception.Code.ToValue(), detail: exception.Message),
-                _ => Problem(statusCode: StatusCodes.Status400BadRequest, title: exception.Code.ToValue(), detail: exception.Message)
-            };
-        }
+        Booking booking = await service.CreateAsync(request.RoomId!.Value, request.StartsAt!.Value, request.DurationMinutes, request.ServiceIds, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, BookingsHelper.ToResponse(booking));
     }
 }

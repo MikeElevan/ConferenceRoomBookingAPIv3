@@ -19,6 +19,7 @@ PersistenceOptions persistenceOptions = builder.Configuration
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<BookingExceptionHandler>();
 builder.Services.AddSwaggerGen();
 builder.Services.Configure<SecurityOptions>(builder.Configuration.GetSection(SecurityOptions.SectionName));
 if (builder.Environment.IsEnvironment("Testing"))
@@ -64,6 +65,11 @@ if (persistenceOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgno
         ??throw new InvalidOperationException($"Connection string '{persistenceOptions.ConnectionStringName}' is not configured.");
 
     builder.Services.AddDbContext<BookingDbContext>(options => options.UseSqlServer(connectionString, sqlServerOptions =>
+        sqlServerOptions.EnableRetryOnFailure(
+            persistenceOptions.Retry.MaxRetryCount,
+            TimeSpan.FromSeconds(persistenceOptions.Retry.MaxRetryDelaySeconds),
+            null)));
+    builder.Services.AddDbContextFactory<BookingDbContext>(options => options.UseSqlServer(connectionString, sqlServerOptions =>
         sqlServerOptions.EnableRetryOnFailure(
             persistenceOptions.Retry.MaxRetryCount,
             TimeSpan.FromSeconds(persistenceOptions.Retry.MaxRetryDelaySeconds),
@@ -122,6 +128,9 @@ if (app.Environment.IsDevelopment())
 else
     app.UseHsts();
 
+// Logging stays outside the handler so it records failure responses too.
+app.UseMiddleware<HttpLoggingMiddleware>();
+app.UseExceptionHandler();
 app.UseHttpsRedirection();
 app.UseRequestLocalization(new RequestLocalizationOptions
 {
@@ -132,8 +141,6 @@ app.UseRequestLocalization(new RequestLocalizationOptions
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseExceptionHandler();
-app.UseMiddleware<HttpLoggingMiddleware>();
 app.MapControllers();
 app.MapHealthChecks("/health").AllowAnonymous();
 

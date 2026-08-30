@@ -16,13 +16,7 @@ public sealed class ReportsController(ReportService service) : ControllerBase
     [HttpGet("bookings")]
     public async Task<ActionResult<BookingReportResponse>> GetBookings([FromQuery] ReportRequest request, CancellationToken cancellationToken)
     {
-        try
-        {
-            return Ok(await service.GetBookingReportAsync(request.From!.Value, request.To!.Value, cancellationToken));
-        }
-        catch (Exception exception)
-        {
-            return NotFound();
-        }
+        ArgumentNullException.ThrowIfNull(request);
+        return Ok(await service.GetBookingReportAsync(request.From!.Value, request.To!.Value, cancellationToken));
     }
 }

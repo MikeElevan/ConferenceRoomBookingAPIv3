@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ConferenceRoomBookingAPIv3.Application.Repository;
 
-public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext) : IConferenceRoomRepository, IBookingRepository
+public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext, IDbContextFactory<BookingDbContext> contextFactory) : IConferenceRoomRepository, IBookingRepository
 {
     public async Task<IReadOnlyList<ConferenceRoom>> GetRoomsAsync(CancellationToken cancellationToken = default) =>
         await dbContext.Rooms
@@ -106,22 +106,32 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
     public async Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));
-
-        ConferenceRoom? room = await dbContext.Rooms.SingleOrDefaultAsync(item => item.Id==id, cancellationToken);
-        if (room is null)
+        IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            return false;
-        }
+            await using BookingDbContext attempt = await contextFactory.CreateDbContextAsync(cancellationToken);
+            await using IDbContextTransaction transaction = await attempt.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+            ConferenceRoom? room = await attempt.Rooms.SingleOrDefaultAsync(item => item.Id==id, cancellationToken);
+            if (room is null) return false;
 
-        bool hasBookings = await dbContext.Bookings.AnyAsync(booking => booking.RoomId==id, cancellationToken);
-        if (hasBookings)
-        {
-            throw new BookingException(ErrorCode.RoomHasBookings, ErrorMessages.RoomHasBookings);
-        }
+            if (await attempt.Bookings.AnyAsync(booking => booking.RoomId==id, cancellationToken))
+            {
+                throw new BookingException(ErrorCode.RoomHasBookings, ErrorMessages.RoomHasBookings);
+            }
 
-        dbContext.Rooms.Remove(room);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return true;
+            attempt.Rooms.Remove(room);
+            try
+            {
+                await attempt.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                throw new BookingException(ErrorCode.RoomHasBookings, ErrorMessages.RoomHasBookings);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        });
     }
 
     public Task<IReadOnlyList<Booking>> GetBookingsAsync(Guid roomId, CancellationToken cancellationToken = default)
@@ -145,10 +155,11 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
+            await using BookingDbContext attempt = await contextFactory.CreateDbContextAsync(cancellationToken);
             await using IDbContextTransaction transaction =
-                await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+                await attempt.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
-            bool hasConflict = await dbContext.Bookings.AnyAsync(existing =>
+            bool hasConflict = await attempt.Bookings.AnyAsync(existing =>
                 existing.RoomId==booking.RoomId&&
                 existing.StartsAt<booking.EndsAt&&
                 booking.StartsAt<existing.EndsAt, cancellationToken);
@@ -160,11 +171,11 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
 
             foreach (RoomService service in booking.Services)
             {
-                dbContext.Entry(service).State=EntityState.Unchanged;
+                attempt.Entry(service).State=EntityState.Unchanged;
             }
 
-            dbContext.Bookings.Add(booking);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            attempt.Bookings.Add(booking);
+            await attempt.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return true;
         });
