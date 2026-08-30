@@ -17,6 +17,6 @@ public static class BookingsHelper
             booking.RoomCost,
             booking.ServicesCost,
             booking.TotalCost,
-            booking.Services.Select(service => new ServiceResponse(service.Id, service.Name, service.Price)).ToList());
+            booking.Services.Select(service => new ServiceResponse(service.ServiceId, service.Name, service.Price)).ToList());
     }
 }

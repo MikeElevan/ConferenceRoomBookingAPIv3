@@ -6,11 +6,17 @@ namespace ConferenceRoomBookingAPIv3.Application.Services;
 
 public sealed class ReportService(IConferenceRoomRepository roomRepository, IBookingRepository bookingRepository)
 {
+    private const int MaximumRangeDays = 366;
+
     public async Task<BookingReportResponse> GetBookingReportAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
         if (to <= from)
         {
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
+        }
+        if (to - from > TimeSpan.FromDays(MaximumRangeDays))
+        {
+            throw new ArgumentException($"The report range must not exceed {MaximumRangeDays} days.", nameof(to));
         }
 
         IReadOnlyList<ConferenceRoom> rooms = await roomRepository.GetRoomsAsync(cancellationToken);
@@ -20,13 +26,13 @@ public sealed class ReportService(IConferenceRoomRepository roomRepository, IBoo
 
         foreach (Booking booking in selectedBookings)
         {
-            foreach (RoomService service in booking.Services)
+            foreach (BookingServiceSnapshot service in booking.Services)
             {
-                if (!serviceReports.TryGetValue(service.Id, out ServiceReportResponse? report))
+                if (!serviceReports.TryGetValue(service.ServiceId, out ServiceReportResponse? report))
                 {
-                    report = new ServiceReportResponse(service.Id, service.Name, 0, 0m);
+                    report = new ServiceReportResponse(service.ServiceId, service.Name, 0, 0m);
                 }
-                serviceReports[service.Id] = report with
+                serviceReports[service.ServiceId] = report with
                 {
                     UsageCount = report.UsageCount + 1,
                     Revenue = report.Revenue + service.Price
@@ -34,7 +40,9 @@ public sealed class ReportService(IConferenceRoomRepository roomRepository, IBoo
             }
         }
 
-        double utilizationPercent = roomReports.Count == 0 ? 0d : Math.Round(roomReports.Average(item => item.UtilizationPercent), 2);
+        double totalAvailableHours = roomReports.Sum(item => (to - from).TotalHours);
+        double utilizationPercent = totalAvailableHours == 0d ? 0d :
+            Math.Round(roomReports.Sum(item => item.BookedHours) / totalAvailableHours * 100d, 2);
         decimal revenue = selectedBookings.Sum(booking => booking.RoomCost + booking.ServicesCost);
         return new BookingReportResponse(from, to, selectedBookings.Count, revenue, utilizationPercent,
             roomReports, serviceReports.Values.OrderByDescending(item => item.Revenue).ToList());

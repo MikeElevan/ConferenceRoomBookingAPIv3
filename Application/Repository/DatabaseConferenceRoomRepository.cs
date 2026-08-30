@@ -169,11 +169,6 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
                 return false;
             }
 
-            foreach (RoomService service in booking.Services)
-            {
-                attempt.Entry(service).State=EntityState.Unchanged;
-            }
-
             attempt.Bookings.Add(booking);
             await attempt.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);

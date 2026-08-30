@@ -187,9 +187,10 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         EndsAt = booking.EndsAt,
         RoomCost = booking.RoomCost,
         ServicesCost = booking.ServicesCost,
-        Services = booking.Services.Select(service => new RoomService
+        Services = booking.Services.Select(service => new BookingServiceSnapshot
         {
-            Id = service.Id,
+            BookingId = service.BookingId,
+            ServiceId = service.ServiceId,
             Name = service.Name,
             Price = service.Price
         }).ToList()

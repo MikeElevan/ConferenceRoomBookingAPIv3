@@ -41,13 +41,20 @@ public sealed class BookingService(
             throw new BookingException(ErrorCode.ServiceNotFound, ErrorMessages.ServiceNotFound);
         }
 
+        Guid bookingId = Guid.NewGuid();
         var booking = new Booking
         {
-            Id = Guid.NewGuid(),
+            Id = bookingId,
             RoomId = roomId,
             StartsAt = startsAt,
             EndsAt = endsAt,
-            Services = selectedServices,
+            Services = selectedServices.Select(service => new BookingServiceSnapshot
+            {
+                BookingId = bookingId,
+                ServiceId = service.Id,
+                Name = service.Name,
+                Price = service.Price
+            }).ToList(),
             RoomCost = pricing.CalculateRoomCost(room.BaseHourlyRate, startsAt, endsAt),
             ServicesCost = selectedServices.Sum(service => service.Price)
         };
