@@ -4,7 +4,7 @@ using ConferenceRoomBookingAPIv3.DomainModels;
 
 namespace ConferenceRoomBookingAPIv3.Application.Services;
 
-public sealed class ReportService(IConferenceRoomRepository repository)
+public sealed class ReportService(IConferenceRoomRepository roomRepository, IBookingRepository bookingRepository)
 {
     public async Task<BookingReportResponse> GetBookingReportAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
@@ -13,11 +13,8 @@ public sealed class ReportService(IConferenceRoomRepository repository)
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
         }
 
-        IReadOnlyList<ConferenceRoom> rooms = await repository.GetRoomsAsync(cancellationToken);
-        IReadOnlyList<Booking> bookings = await repository.GetAllBookingsAsync(cancellationToken);
-        List<Booking> selectedBookings = bookings
-            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
-            .ToList();
+        IReadOnlyList<ConferenceRoom> rooms = await roomRepository.GetRoomsAsync(cancellationToken);
+        List<Booking> selectedBookings = (await bookingRepository.GetBookingsInRangeAsync(from, to, cancellationToken)).ToList();
         List<RoomReportResponse> roomReports = rooms.Select(room => CreateRoomReport(room, selectedBookings, from, to)).ToList();
         Dictionary<Guid, ServiceReportResponse> serviceReports = new Dictionary<Guid, ServiceReportResponse>();
 

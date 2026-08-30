@@ -4,7 +4,10 @@ using ConferenceRoomBookingAPIv3.Application.Interfaces;
 
 namespace ConferenceRoomBookingAPIv3.Application.Services;
 
-public sealed class BookingService(IConferenceRoomRepository repository, IPricingService pricing)
+public sealed class BookingService(
+    IConferenceRoomRepository roomRepository,
+    IBookingRepository bookingRepository,
+    IPricingService pricing)
 {
     public async Task<IReadOnlyList<ConferenceRoom>> SearchAsync(DateTimeOffset startsAt, DateTimeOffset endsAt, int capacity, CancellationToken cancellationToken = default)
     {
@@ -14,7 +17,7 @@ public sealed class BookingService(IConferenceRoomRepository repository, IPricin
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(endsAt));
         }
 
-        return await repository.GetAvailableRoomsAsync(startsAt, endsAt, capacity, cancellationToken);
+        return await roomRepository.GetAvailableRoomsAsync(startsAt, endsAt, capacity, cancellationToken);
     }
 
     public async Task<Booking> CreateAsync(Guid roomId, DateTimeOffset startsAt, int durationMinutes, IEnumerable<Guid> serviceIds, CancellationToken cancellationToken = default)
@@ -27,7 +30,7 @@ public sealed class BookingService(IConferenceRoomRepository repository, IPricin
 
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(durationMinutes);
 
-        ConferenceRoom room = await repository.GetRoomAsync(roomId, cancellationToken)
+        ConferenceRoom room = await roomRepository.GetRoomAsync(roomId, cancellationToken)
             ?? throw new BookingException(ErrorCode.RoomNotFound, ErrorMessages.RoomNotFound);
         DateTimeOffset endsAt = startsAt.AddMinutes(durationMinutes);
         HashSet<Guid> selectedIds = serviceIds.ToHashSet();
@@ -49,7 +52,7 @@ public sealed class BookingService(IConferenceRoomRepository repository, IPricin
             ServicesCost = selectedServices.Sum(service => service.Price)
         };
 
-        if (!await repository.TryAddBookingAsync(booking, cancellationToken))
+        if (!await bookingRepository.TryAddBookingAsync(booking, cancellationToken))
         {
             throw new BookingException(ErrorCode.BookingConflict, ErrorMessages.BookingConflict);
         }

@@ -6,6 +6,7 @@ public enum ErrorCode
     ServiceNotFound,
     BookingConflict,
     RoomHasBookings,
+    ServiceNameConflict,
     Unknown
 }
 
@@ -17,6 +18,7 @@ public static class ErrorCodeExtensions
         ErrorCode.ServiceNotFound => "service_not_found",
         ErrorCode.BookingConflict => "booking_conflict",
         ErrorCode.RoomHasBookings => "room_has_bookings",
+        ErrorCode.ServiceNameConflict => "service_name_conflict",
         _ => "unknown_error"
     };
 }

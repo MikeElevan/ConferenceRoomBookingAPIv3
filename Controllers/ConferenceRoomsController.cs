@@ -41,9 +41,16 @@ public sealed class ConferenceRoomsController(IConferenceRoomRepository reposito
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!await repository.PatchRoomAsync(id, room => ConferenceRoomsHelper.ApplyPatch(room, request), cancellationToken))
+        try
         {
-            return NotFound();
+            if (!await repository.PatchRoomAsync(id, room => ConferenceRoomsHelper.ApplyPatch(room, request), cancellationToken))
+            {
+                return NotFound();
+            }
+        }
+        catch (BookingException exception) when (exception.Code == ErrorCode.ServiceNameConflict)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: exception.Code.ToValue(), detail: exception.Message);
         }
 
         return NoContent();

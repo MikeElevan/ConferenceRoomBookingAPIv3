@@ -1,0 +1,9 @@
+
+Application/Repository/CachedConferenceRoomRepository.cs
+Application/Repository/CachedBookingRepository.cs
+Application/Interfaces/IConferenceRoomRepositoryAdapter.cs
+Application/Interfaces/IBookingRepositoryAdapter.cs
+Infrastructure/CacheOptions.cs
+Constants/CacheKeys.cs
+Constants/CacheDurations.cs
+

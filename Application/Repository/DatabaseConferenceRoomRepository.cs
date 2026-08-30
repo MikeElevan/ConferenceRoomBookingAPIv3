@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ConferenceRoomBookingAPIv3.Application.Repository;
 
-public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext) : IConferenceRoomRepositoryAdapter
+public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext) : IConferenceRoomRepository, IBookingRepository
 {
     public async Task<IReadOnlyList<ConferenceRoom>> GetRoomsAsync(CancellationToken cancellationToken = default) =>
         await dbContext.Rooms
@@ -33,11 +33,23 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         return GetRoomInternalAsync(id, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Booking>> GetAllBookingsAsync(CancellationToken cancellationToken = default) =>
-        await dbContext.Bookings
+    public async Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        if (to <= from)
+        {
+            throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
+        }
+
+        // Pushed into the SQL WHERE clause instead of pulling every booking ever made into
+        // application memory and filtering with LINQ-to-Objects. A report over one day used to
+        // cost a full table scan of Bookings regardless of range size — this scales with the
+        // number of bookings that actually overlap [from, to), not with total booking history.
+        return await dbContext.Bookings
             .AsNoTracking()
             .Include(booking => booking.Services)
+            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
             .ToListAsync(cancellationToken);
+    }
 
     private Task<ConferenceRoom?> GetRoomInternalAsync(Guid id, CancellationToken cancellationToken) =>
         dbContext.Rooms
@@ -64,8 +76,19 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
         IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
+            // ReadCommitted, not Serializable: the one invariant this method must protect —
+            // "no two services on the same room share a name" — is already enforced by the
+            // (ConferenceRoomId, Name) unique index regardless of isolation level, since unique
+            // constraints are checked at write time, not governed by MVCC snapshot rules. Two
+            // concurrent PATCHes upserting different service names to the same room don't touch
+            // overlapping rows and can safely run concurrently. Serializable would instead take
+            // range locks across the whole read set for no additional correctness benefit here —
+            // exactly the kind of unnecessary contention that produces the deadlocks under
+            // concurrent load. (Contrast with TryAddBookingAsync below, where "no overlapping
+            // booking" is a genuine range invariant with no equivalent index — that one keeps
+            // Serializable because it actually needs it.)
             await using IDbContextTransaction transaction =
-                await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
+                await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
 
             ConferenceRoom? existingRoom = await dbContext.Rooms
                 .Include(item => item.Services)
@@ -77,11 +100,29 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext)
             }
 
             patch(existingRoom);
-            await dbContext.SaveChangesAsync(cancellationToken);
+
+            try
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException exception) when (IsUniqueServiceNameViolation(exception))
+            {
+                // Two concurrent PATCHes each upserting a *new* service with the same name on
+                // the same room: under ReadCommitted neither sees the other's still-uncommitted
+                // insert, both attempt an insert, and the unique index rejects the second one at
+                // the database level. Translate that race into the same typed conflict response
+                // the rest of the API already uses, instead of an unhandled 500.
+                throw new BookingException(ErrorCode.ServiceNameConflict, ErrorMessages.ServiceNameConflict);
+            }
+
             await transaction.CommitAsync(cancellationToken);
             return true;
         });
     }
+
+    private static bool IsUniqueServiceNameViolation(DbUpdateException exception) =>
+        exception.InnerException is Microsoft.Data.SqlClient.SqlException sqlException &&
+        sqlException.Errors.Cast<Microsoft.Data.SqlClient.SqlError>().Any(error => error.Number is 2601 or 2627);
 
     public async Task<bool> DeleteRoomAsync(Guid id, CancellationToken cancellationToken = default)
     {

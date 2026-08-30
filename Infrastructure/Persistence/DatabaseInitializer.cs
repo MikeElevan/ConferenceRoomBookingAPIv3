@@ -9,7 +9,12 @@ public static class DatabaseInitializer
     {
         ArgumentNullException.ThrowIfNull(dbContext);
 
-        dbContext.Database.EnsureCreated();
+        // EnsureCreated() builds a schema from the current model snapshot and has no concept of
+        // versioned change over time — it cannot apply incremental changes to a database that
+        // already exists, and it must never be mixed with migrations (the two are mutually
+        // exclusive). Migrate() applies whatever migrations haven't run yet, in order, and is a
+        // no-op if the schema is already current — the only safe option for a production path.
+        dbContext.Database.Migrate();
 
         if (dbContext.Rooms.Any())
         {

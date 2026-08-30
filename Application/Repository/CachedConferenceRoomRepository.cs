@@ -34,21 +34,6 @@ public sealed class CachedConferenceRoomRepository(
         return await adapter.GetAvailableRoomsAsync(startsAt, endsAt, capacity, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Booking>> GetAllBookingsAsync(CancellationToken cancellationToken = default)
-    {
-        if (!cacheOptions.Enabled)
-        {
-            return await adapter.GetAllBookingsAsync(cancellationToken);
-        }
-
-        return await cache.GetOrCreateAsync(
-            CacheKeys.AllBookings,
-            async cancel => await adapter.GetAllBookingsAsync(cancel),
-            CreateOptions(cacheOptions.BookingsMinutes),
-            tags: new string[] { CacheKeys.RoomsTag },
-            cancellationToken: cancellationToken);
-    }
-
     public async Task<ConferenceRoom?> GetRoomAsync(Guid id, CancellationToken cancellationToken = default)
     {
         ValidateIdentifier(id, nameof(id));
@@ -97,42 +82,6 @@ public sealed class CachedConferenceRoomRepository(
         {
             await InvalidateRoomsAsync(cancellationToken);
         }
-        return result;
-    }
-
-    public async Task<IReadOnlyList<Booking>> GetBookingsAsync(Guid roomId, CancellationToken cancellationToken = default)
-    {
-        ValidateIdentifier(roomId, nameof(roomId));
-
-        if (!cacheOptions.Enabled)
-        {
-            return await adapter.GetBookingsAsync(roomId, cancellationToken);
-        }
-
-        return await cache.GetOrCreateAsync(
-            string.Format(CacheKeys.Bookings, roomId),
-            async cancel => await adapter.GetBookingsAsync(roomId, cancel),
-            CreateOptions(cacheOptions.BookingsMinutes),
-            tags: new string[] { CacheKeys.RoomsTag },
-            cancellationToken: cancellationToken);
-    }
-
-    public async Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(booking);
-        ValidateIdentifier(booking.RoomId, nameof(booking.RoomId));
-        if (booking.EndsAt <= booking.StartsAt)
-        {
-            throw new ArgumentException("The ending time must be later than the starting time.", nameof(booking));
-        }
-
-        bool result = await adapter.TryAddBookingAsync(booking, cancellationToken);
-        if (result)
-        {
-            await cache.RemoveAsync(string.Format(CacheKeys.Bookings, booking.RoomId), cancellationToken);
-            await cache.RemoveAsync(CacheKeys.AllBookings, cancellationToken);
-        }
-
         return result;
     }
 

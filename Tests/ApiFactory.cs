@@ -14,8 +14,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             Dictionary<string, string?> settings = new()
             {
                 ["Persistence:Provider"] = "InMemory",
-                ["HttpLogging:Enabled"] = "false",
-                ["Cache:Enabled"] = "false"
+                ["HttpLogging:Enabled"] = "false"
             };
 
             configuration.AddInMemoryCollection(settings);

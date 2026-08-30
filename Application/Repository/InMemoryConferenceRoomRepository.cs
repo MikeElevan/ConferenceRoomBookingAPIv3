@@ -5,7 +5,7 @@ using ConferenceRoomBookingAPIv3.Constants;
 
 namespace ConferenceRoomBookingAPIv3.Application.Repository;
 
-public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepositoryAdapter
+public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository, IBookingRepository
 {
     private readonly Lock sync = new();
     private readonly Dictionary<Guid, ConferenceRoom> rooms = new Dictionary<Guid, ConferenceRoom>();
@@ -18,11 +18,17 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         AddSeedRoom("Зал C", 30, 1500m, ("Проектор", 500m), ("Wi-Fi", 300m), ("Звук", 700m));
     }
 
-    public Task<IReadOnlyList<Booking>> GetAllBookingsAsync(CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
+        if (to <= from)
+        {
+            throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
+        }
+
         lock (sync)
         {
-            return Task.FromResult<IReadOnlyList<Booking>>(bookings.ToList());
+            return Task.FromResult<IReadOnlyList<Booking>>(
+                bookings.Where(booking => booking.StartsAt < to && from < booking.EndsAt).Select(CloneBooking).ToList());
         }
     }
 
@@ -132,7 +138,8 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
 
         lock (sync)
         {
-            return Task.FromResult<IReadOnlyList<Booking>>(bookings.Where(booking => booking.RoomId == roomId).ToList());
+            return Task.FromResult<IReadOnlyList<Booking>>(
+                bookings.Where(booking => booking.RoomId == roomId).Select(CloneBooking).ToList());
         }
     }
 
@@ -153,7 +160,13 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
                 return Task.FromResult(false);
             }
 
-            bookings.Add(booking);
+            // Store a private copy rather than the caller's own instance. Booking.Services is a
+            // mutable List<RoomService> (EF Core needs that to populate the many-to-many
+            // navigation) — without cloning, a reference to this exact object would keep
+            // escaping through every GetBookingsAsync/GetBookingsInRangeAsync call below, and any
+            // consumer mutating .Services on what it thinks is "its own" result would silently
+            // corrupt shared state without ever going through this lock.
+            bookings.Add(CloneBooking(booking));
             return Task.FromResult(true);
         }
     }
@@ -165,6 +178,22 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         Capacity = room.Capacity,
         BaseHourlyRate = room.BaseHourlyRate,
         Services = room.Services.Select(service => new RoomService
+        {
+            Id = service.Id,
+            Name = service.Name,
+            Price = service.Price
+        }).ToList()
+    };
+
+    private static Booking CloneBooking(Booking booking) => new()
+    {
+        Id = booking.Id,
+        RoomId = booking.RoomId,
+        StartsAt = booking.StartsAt,
+        EndsAt = booking.EndsAt,
+        RoomCost = booking.RoomCost,
+        ServicesCost = booking.ServicesCost,
+        Services = booking.Services.Select(service => new RoomService
         {
             Id = service.Id,
             Name = service.Name,

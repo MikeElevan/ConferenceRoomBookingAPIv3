@@ -6,7 +6,7 @@ public sealed class Booking
     public Guid RoomId { get; init; }
     public DateTimeOffset StartsAt { get; init; }
     public DateTimeOffset EndsAt { get; init; }
-    public IReadOnlyList<RoomService> Services { get; init; } = new List<RoomService>();
+    public List<RoomService> Services { get; init; } = new List<RoomService>();
     public decimal RoomCost { get; init; }
     public decimal ServicesCost { get; init; }
     public decimal TotalCost => RoomCost + ServicesCost;

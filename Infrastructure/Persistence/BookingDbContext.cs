@@ -39,7 +39,15 @@ public sealed class BookingDbContext(DbContextOptions<BookingDbContext> options)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasMany(booking => booking.Services)
                 .WithMany()
-                .UsingEntity("BookingServices");
+                .UsingEntity<Dictionary<string, object>>(
+                    "BookingServices",
+                    right => right.HasOne<RoomService>().WithMany().HasForeignKey("ServiceId").OnDelete(DeleteBehavior.Cascade),
+                    left => left.HasOne<Booking>().WithMany().HasForeignKey("BookingId").OnDelete(DeleteBehavior.Cascade),
+                    join =>
+                    {
+                        join.HasKey("BookingId", "ServiceId");
+                        join.ToTable("BookingServices");
+                    });
             entity.Property(booking => booking.RoomCost).HasPrecision(18, 2);
             entity.Property(booking => booking.ServicesCost).HasPrecision(18, 2);
             entity.Ignore(booking => booking.TotalCost);

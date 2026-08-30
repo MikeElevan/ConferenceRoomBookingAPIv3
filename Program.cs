@@ -1,15 +1,15 @@
-using System.Threading.RateLimiting;
-using System.Globalization;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
-using ConferenceRoomBookingAPIv3.Infrastructure.Persistence;
-using ConferenceRoomBookingAPIv3.Infrastructure;
-using ConferenceRoomBookingAPIv3.Middleware;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Localization;
 using ConferenceRoomBookingAPIv3.Application.Repository;
 using ConferenceRoomBookingAPIv3.Application.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+using ConferenceRoomBookingAPIv3.Infrastructure;
+using ConferenceRoomBookingAPIv3.Infrastructure.Persistence;
+using ConferenceRoomBookingAPIv3.Middleware;
 using ConferenceRoomBookingAPIv3.Security;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Localization;
+using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Threading.RateLimiting;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -28,9 +28,6 @@ if (builder.Environment.IsEnvironment("Testing"))
 }
 else if (builder.Environment.IsDevelopment())
 {
-    // Fake auth for local debugging only — no real IdP/JWT required.
-    // Simulated user name/roles are configured via the "DevelopmentAuth" section
-    // in appsettings.Development.json, so they can be tweaked without recompiling.
     builder.Services.Configure<DevelopmentAuthOptions>(builder.Configuration.GetSection(DevelopmentAuthOptions.SectionName));
     builder.Services.AddAuthentication("Development")
         .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>("Development", _ => { });
@@ -60,9 +57,7 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddHealthChecks();
 builder.Services.Configure<HttpLoggingOptions>(builder.Configuration.GetSection(HttpLoggingOptions.SectionName));
-builder.Services.Configure<CacheOptions>(builder.Configuration.GetSection(CacheOptions.SectionName));
-builder.Services.AddDistributedMemoryCache();
-builder.Services.AddHybridCache();
+builder.Services.Configure<PricingOptions>(builder.Configuration.GetSection(PricingOptions.SectionName));
 if (persistenceOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
 {
     string connectionString = builder.Configuration.GetConnectionString(persistenceOptions.ConnectionStringName)
@@ -73,18 +68,22 @@ if (persistenceOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgno
             persistenceOptions.Retry.MaxRetryCount,
             TimeSpan.FromSeconds(persistenceOptions.Retry.MaxRetryDelaySeconds),
             null)));
-    builder.Services.AddScoped<IConferenceRoomRepositoryAdapter, DatabaseConferenceRoomRepository>();
+
+    builder.Services.AddScoped<DatabaseConferenceRoomRepository>();
+    builder.Services.AddScoped<IConferenceRoomRepository>(sp => sp.GetRequiredService<DatabaseConferenceRoomRepository>());
+    builder.Services.AddScoped<IBookingRepository>(sp => sp.GetRequiredService<DatabaseConferenceRoomRepository>());
 }
 else if (persistenceOptions.Provider.Equals("InMemory", StringComparison.OrdinalIgnoreCase))
 {
-    builder.Services.AddSingleton<IConferenceRoomRepositoryAdapter, InMemoryConferenceRoomRepository>();
+    builder.Services.AddSingleton<InMemoryConferenceRoomRepository>();
+    builder.Services.AddSingleton<IConferenceRoomRepository>(sp => sp.GetRequiredService<InMemoryConferenceRoomRepository>());
+    builder.Services.AddSingleton<IBookingRepository>(sp => sp.GetRequiredService<InMemoryConferenceRoomRepository>());
 }
 else
 {
     throw new InvalidOperationException($"Unsupported persistence provider '{persistenceOptions.Provider}'. Use 'InMemory' or 'SqlServer'.");
 }
 
-builder.Services.AddScoped<IConferenceRoomRepository, CachedConferenceRoomRepository>();
 builder.Services.AddSingleton<IPricingService, PricingService>();
 builder.Services.AddScoped<BookingService>();
 builder.Services.AddScoped<ReportService>();
