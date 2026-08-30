@@ -98,6 +98,52 @@ public sealed class BookingsApiTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task BookingReport_UsesTheServicePriceCapturedWhenBooked()
+    {
+        object roomRequest = new
+        {
+            name = "Snapshot room", capacity = 10, baseHourlyRate = 1000m,
+            services = new[] { new { name = "Projector", price = 150m } }
+        };
+        using HttpContent createRoomContent = JsonContent.Create(roomRequest);
+        HttpResponseMessage createRoomResponse = await client.PostAsync("/api/v1/rooms", createRoomContent);
+        JsonElement room = await createRoomResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Guid roomId = room.GetProperty("id").GetGuid();
+        Guid serviceId = room.GetProperty("services")[0].GetProperty("id").GetGuid();
+        Assert.Equal(HttpStatusCode.Created, createRoomResponse.StatusCode);
+
+        DateTimeOffset startsAt = DateTimeOffset.UtcNow.AddHours(12);
+        using HttpContent createBookingContent = JsonContent.Create(CreateBookingRequest(roomId, startsAt, serviceId));
+        HttpResponseMessage createBookingResponse = await client.PostAsync("/api/v1/bookings", createBookingContent);
+        Assert.Equal(HttpStatusCode.Created, createBookingResponse.StatusCode);
+
+        using HttpContent patchContent = JsonContent.Create(new { services = new[] { new { name = "Projector", price = 900m } } });
+        HttpResponseMessage patchResponse = await client.PatchAsync($"/api/v1/rooms/{roomId}", patchContent);
+        Assert.Equal(HttpStatusCode.NoContent, patchResponse.StatusCode);
+
+        string reportUri = $"/api/v1/reports/bookings?from={Uri.EscapeDataString(startsAt.AddHours(-1).ToString("O"))}&to={Uri.EscapeDataString(startsAt.AddHours(2).ToString("O"))}";
+        HttpResponseMessage reportResponse = await client.GetAsync(reportUri);
+        JsonElement report = await reportResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, reportResponse.StatusCode);
+        JsonElement service = report.GetProperty("services").EnumerateArray().Single(item => item.GetProperty("serviceId").GetGuid() == serviceId);
+        Assert.Equal("Projector", service.GetProperty("serviceName").GetString());
+        Assert.Equal(150m, service.GetProperty("revenue").GetDecimal());
+    }
+
+    [Fact]
+    public async Task BookingReport_WithRangeOver366Days_ReturnsBadRequest()
+    {
+        DateTimeOffset from = DateTimeOffset.UtcNow;
+        DateTimeOffset to = from.AddDays(367);
+        string requestUri = $"/api/v1/reports/bookings?from={Uri.EscapeDataString(from.ToString("O"))}&to={Uri.EscapeDataString(to.ToString("O"))}";
+
+        HttpResponseMessage response = await client.GetAsync(requestUri);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private async Task<(Guid RoomId, Guid ServiceId)> GetRoomAndServiceAsync()
     {
         HttpResponseMessage response = await client.GetAsync("/api/v1/rooms");

@@ -170,6 +170,13 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
             await using IDbContextTransaction transaction =
                 await attempt.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
+            // A transient error from CommitAsync leaves its outcome unknown. If the commit did
+            // succeed, a retry must recognize this booking rather than treating it as a conflict.
+            if (await attempt.Bookings.AsNoTracking().AnyAsync(existing => existing.Id == booking.Id, cancellationToken))
+            {
+                return true;
+            }
+
             bool hasConflict = await attempt.Bookings.AnyAsync(existing =>
                 existing.RoomId == booking.RoomId &&
                 existing.StartsAt < booking.EndsAt &&

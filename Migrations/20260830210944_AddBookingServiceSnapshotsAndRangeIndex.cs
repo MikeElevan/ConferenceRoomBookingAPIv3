@@ -35,11 +35,30 @@ namespace ConferenceRoomBookingAPIv3.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            // The old schema did not retain per-service charged amounts. Preserve each booking's
+            // persisted ServicesCost exactly by distributing it across its historical services;
+            // the first row absorbs the rounding remainder.
             migrationBuilder.Sql("""
-                INSERT INTO [BookingServiceSnapshot] ([BookingId], [ServiceId], [Name], [Price])
-                SELECT [bs].[BookingId], [bs].[ServiceId], [rs].[Name], [rs].[Price]
-                FROM [BookingServices] AS [bs]
-                INNER JOIN [RoomServices] AS [rs] ON [rs].[Id] = [bs].[ServiceId];
+                WITH Source AS
+                (
+                    SELECT bs.BookingId, bs.ServiceId, rs.Name, b.ServicesCost,
+                        COUNT(*) OVER (PARTITION BY bs.BookingId) AS ServiceCount,
+                        ROW_NUMBER() OVER (PARTITION BY bs.BookingId ORDER BY bs.ServiceId) AS RowNumber
+                    FROM BookingServices AS bs
+                    INNER JOIN Bookings AS b ON b.Id = bs.BookingId
+                    INNER JOIN RoomServices AS rs ON rs.Id = bs.ServiceId
+                ), Allocated AS
+                (
+                    SELECT *, ROUND(ServicesCost / ServiceCount, 2) AS RoundedPrice
+                    FROM Source
+                )
+                INSERT INTO BookingServiceSnapshot (BookingId, ServiceId, Name, Price)
+                SELECT BookingId, ServiceId, Name,
+                    CASE WHEN RowNumber = 1
+                        THEN ServicesCost - RoundedPrice * (ServiceCount - 1)
+                        ELSE RoundedPrice
+                    END
+                FROM Allocated;
                 """);
 
             migrationBuilder.DropTable(name: "BookingServices");
@@ -53,9 +72,6 @@ namespace ConferenceRoomBookingAPIv3.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "BookingServiceSnapshot");
-
             migrationBuilder.DropIndex(
                 name: "IX_Bookings_RoomId_StartsAt_EndsAt",
                 table: "Bookings");
@@ -88,6 +104,8 @@ namespace ConferenceRoomBookingAPIv3.Migrations
                 INSERT INTO [BookingServices] ([BookingId], [ServiceId])
                 SELECT [BookingId], [ServiceId] FROM [BookingServiceSnapshot];
                 """);
+
+            migrationBuilder.DropTable(name: "BookingServiceSnapshot");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Bookings_RoomId",

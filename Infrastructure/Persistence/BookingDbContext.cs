@@ -16,6 +16,7 @@ public sealed class BookingDbContext(DbContextOptions<BookingDbContext> options)
             entity.HasKey(room => room.Id);
             entity.Property(room => room.Name).IsRequired().HasMaxLength(100);
             entity.Property(room => room.BaseHourlyRate).HasPrecision(18, 2);
+            entity.Property(room => room.RowVersion).IsRowVersion();
             entity.HasMany(room => room.Services)
                 .WithOne()
                 .HasForeignKey("ConferenceRoomId")
