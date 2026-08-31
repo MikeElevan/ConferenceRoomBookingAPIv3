@@ -4,6 +4,7 @@ namespace ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 
 /// <summary>
 /// Запрос на создание бронирования конференц-зала.
+/// Поддерживает идемпотентность через IdempotencyKey для безопасных повторных запросов.
 /// </summary>
 public sealed class BookingRequest : IValidatableObject
 {
@@ -21,6 +22,13 @@ public sealed class BookingRequest : IValidatableObject
 
     /// <summary>Идентификаторы выбранных услуг.</summary>
     public List<Guid> ServiceIds { get; init; } = new List<Guid>();
+
+    /// <summary>
+    /// Ключ идемпотентности. При повторной отправке запроса с тем же ключом вернётся
+    /// результат первого выполнения вместо создания дубликата. Рекомендуется использовать
+    /// GUID, сгенерированный клиентом.
+    /// </summary>
+    public string? IdempotencyKey { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

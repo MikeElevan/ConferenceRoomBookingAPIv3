@@ -46,6 +46,49 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
             .ToListAsync(cancellationToken);
     }
 
+    public Task<Booking?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default) =>
+        dbContext.Bookings
+            .AsNoTracking()
+            .Include(booking => booking.Services)
+            .SingleOrDefaultAsync(booking => booking.IdempotencyKey == idempotencyKey, cancellationToken);
+
+    public async Task<IReadOnlyList<RoomBookingStats>> GetRoomBookingStatsAsync(
+        DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        List<RoomBookingStats> stats = await dbContext.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
+            .GroupBy(booking => booking.RoomId)
+            .Select(group => new RoomBookingStats(
+                group.Key,
+                group.Count(),
+                group.Sum(b => b.RoomCost + b.ServicesCost),
+                group.Sum(b => EF.Functions.DateDiffSecond(
+                    b.StartsAt > from ? b.StartsAt : from,
+                    b.EndsAt < to ? b.EndsAt : to) / 3600.0)))
+            .ToListAsync(cancellationToken);
+
+        return stats;
+    }
+
+    public async Task<IReadOnlyList<ServiceStats>> GetServiceStatsAsync(
+        DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        List<ServiceStats> stats = await dbContext.Bookings
+            .AsNoTracking()
+            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
+            .SelectMany(booking => booking.Services)
+            .GroupBy(service => new { service.ServiceId, service.Name })
+            .Select(group => new ServiceStats(
+                group.Key.ServiceId,
+                group.Key.Name,
+                group.Count(),
+                group.Sum(s => s.Price)))
+            .ToListAsync(cancellationToken);
+
+        return stats;
+    }
+
     private Task<ConferenceRoom?> GetRoomInternalAsync(Guid id, CancellationToken cancellationToken) =>
         dbContext.Rooms
             .AsNoTracking()

@@ -44,6 +44,8 @@ public sealed class BookingDbContext(DbContextOptions<BookingDbContext> options)
                 .HasForeignKey(snapshot => snapshot.BookingId)
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(booking => new { booking.RoomId, booking.StartsAt, booking.EndsAt });
+            entity.HasIndex(booking => booking.IdempotencyKey).IsUnique().HasFilter("[IdempotencyKey] IS NOT NULL");
+            entity.Property(booking => booking.IdempotencyKey).HasMaxLength(100);
             entity.Property(booking => booking.RoomCost).HasPrecision(18, 2);
             entity.Property(booking => booking.ServicesCost).HasPrecision(18, 2);
             entity.Ignore(booking => booking.TotalCost);

@@ -31,6 +31,10 @@ namespace ConferenceRoomBookingAPIv3.Migrations
                     b.Property<DateTimeOffset>("EndsAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<decimal>("RoomCost")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -48,6 +52,10 @@ namespace ConferenceRoomBookingAPIv3.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("RoomId", "StartsAt", "EndsAt");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("[IdempotencyKey] IS NOT NULL");
 
                     b.ToTable("Bookings");
                 });

@@ -6,6 +6,14 @@ using Microsoft.Extensions.Options;
 
 namespace ConferenceRoomBookingAPIv3.Middleware;
 
+/// <summary>
+/// Middleware для логирования HTTP-запросов/ответов.
+/// </summary>
+/// <remarks>
+/// Память: при включённом IncludeResponseBody весь тело ответа буферизируется в MemoryStream.
+/// При больших ответах (например, отчёты с тысячами записей) это может привести к высокому
+/// потреблению памяти. MaxBodyLength ограничивает только размер лога, но не сам буфер.
+/// </remarks>
 public sealed class HttpLoggingMiddleware(
     RequestDelegate next,
     ILogger<HttpLoggingMiddleware> logger,

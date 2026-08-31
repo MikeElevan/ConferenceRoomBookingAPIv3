@@ -47,7 +47,7 @@ public sealed class BookingService(
     /// <exception cref="ArgumentException">Если roomId is empty или durationMinutes &lt;= 0.</exception>
     /// <exception cref="BookingException">Если зал не найден (RoomNotFound) или услуга не найдена (ServiceNotFound).</exception>
     /// <exception cref="BookingException">Если время занято (BookingConflict).</exception>
-    public async Task<Booking> CreateAsync(Guid roomId, DateTimeOffset startsAt, int durationMinutes, IEnumerable<Guid> serviceIds, CancellationToken cancellationToken = default)
+    public async Task<Booking> CreateAsync(Guid roomId, DateTimeOffset startsAt, int durationMinutes, IEnumerable<Guid> serviceIds, string? idempotencyKey = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceIds);
         if (roomId == Guid.Empty)
@@ -56,6 +56,16 @@ public sealed class BookingService(
         }
 
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(durationMinutes);
+
+        // Idempotency: при наличии ключа проверяем, было ли уже выполнено бронирование
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            Booking? existing = await bookingRepository.GetByIdempotencyKeyAsync(idempotencyKey, cancellationToken);
+            if (existing is not null)
+            {
+                return existing;
+            }
+        }
 
         ConferenceRoom room = await roomRepository.GetRoomAsync(roomId, cancellationToken)
             ?? throw new BookingException(ErrorCode.RoomNotFound, ErrorMessages.RoomNotFound);
@@ -75,6 +85,7 @@ public sealed class BookingService(
             RoomId = roomId,
             StartsAt = startsAt,
             EndsAt = endsAt,
+            IdempotencyKey = idempotencyKey,
             Services = selectedServices.Select(service => new BookingServiceSnapshot
             {
                 BookingId = bookingId,

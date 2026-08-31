@@ -143,6 +143,60 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         }
     }
 
+        public Task<Booking?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        lock (sync)
+        {
+            return Task.FromResult(bookings.FirstOrDefault(booking => booking.IdempotencyKey == idempotencyKey));
+        }
+    }
+
+    public Task<IReadOnlyList<RoomBookingStats>> GetRoomBookingStatsAsync(
+        DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        lock (sync)
+        {
+            var stats = bookings
+                .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
+                .GroupBy(booking => booking.RoomId)
+                .Select(group => new RoomBookingStats(
+                    group.Key,
+                    group.Count(),
+                    group.Sum(b => b.RoomCost + b.ServicesCost),
+                    group.Sum(b => GetOverlapHours(b.StartsAt, b.EndsAt, from, to))))
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<RoomBookingStats>>(stats);
+        }
+    }
+
+    public Task<IReadOnlyList<ServiceStats>> GetServiceStatsAsync(
+        DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        lock (sync)
+        {
+            var stats = bookings
+                .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
+                .SelectMany(booking => booking.Services)
+                .GroupBy(service => service.ServiceId)
+                .Select(group => new ServiceStats(
+                    group.Key,
+                    group.First().Name,
+                    group.Count(),
+                    group.Sum(s => s.Price)))
+                .ToList();
+
+            return Task.FromResult<IReadOnlyList<ServiceStats>>(stats);
+        }
+    }
+
+    private static double GetOverlapHours(DateTimeOffset startsAt, DateTimeOffset endsAt, DateTimeOffset from, DateTimeOffset to)
+    {
+        DateTimeOffset overlapStart = startsAt > from ? startsAt : from;
+        DateTimeOffset overlapEnd = endsAt < to ? endsAt : to;
+        return overlapEnd > overlapStart ? (overlapEnd - overlapStart).TotalHours : 0d;
+    }
+
     public Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -186,6 +240,7 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         RoomId = booking.RoomId,
         StartsAt = booking.StartsAt,
         EndsAt = booking.EndsAt,
+        IdempotencyKey = booking.IdempotencyKey,
         RoomCost = booking.RoomCost,
         ServicesCost = booking.ServicesCost,
         Services = booking.Services.Select(service => new BookingServiceSnapshot

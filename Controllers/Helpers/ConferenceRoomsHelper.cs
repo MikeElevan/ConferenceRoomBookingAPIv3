@@ -63,13 +63,18 @@ public static class ConferenceRoomsHelper
         foreach (RoomServiceRequest incoming in services)
         {
             string name = incoming.Name.Trim();
-            RoomService? existing = room.Services.FirstOrDefault(service =>
+            int index = room.Services.FindIndex(service =>
                 string.Equals(service.Name, name, StringComparison.OrdinalIgnoreCase));
 
-            if (existing is not null)
+            if (index >= 0)
             {
-                existing.Name = name;
-                existing.Price = incoming.Price;
+                // RoomService immutable — заменяем элемент новым вместо мутации
+                room.Services[index] = new RoomService
+                {
+                    Id = room.Services[index].Id,
+                    Name = name,
+                    Price = incoming.Price
+                };
                 continue;
             }
 

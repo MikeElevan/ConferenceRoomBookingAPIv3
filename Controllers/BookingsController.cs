@@ -28,7 +28,7 @@ public sealed class BookingsController(BookingService service) : ControllerBase
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        Booking booking = await service.CreateAsync(request.RoomId!.Value, request.StartsAt!.Value, request.DurationMinutes, request.ServiceIds, cancellationToken);
+        Booking booking = await service.CreateAsync(request.RoomId!.Value, request.StartsAt!.Value, request.DurationMinutes, request.ServiceIds, request.IdempotencyKey, cancellationToken);
         return StatusCode(StatusCodes.Status201Created, BookingsHelper.ToResponse(booking));
     }
 }

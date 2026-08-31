@@ -27,6 +27,9 @@ public sealed class Booking
     /// <summary>Общая стоимость выбранных услуг.</summary>
     public decimal ServicesCost { get; init; }
 
+    /// <summary>Ключ идемпотентности для предотвращения дублирования при повторных запросах.</summary>
+    public string? IdempotencyKey { get; init; }
+
     /// <summary>Итоговая стоимость бронирования (RoomCost + ServicesCost).</summary>
     public decimal TotalCost => RoomCost + ServicesCost;
 }
