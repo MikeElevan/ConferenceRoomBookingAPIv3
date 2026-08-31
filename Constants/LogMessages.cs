@@ -1,5 +1,8 @@
 namespace ConferenceRoomBookingAPIv3.Constants;
 
+/// <summary>
+/// Шаблоны сообщений логирования HTTP-запросов.
+/// </summary>
 public static class LogMessages
 {
     public const string Request = "HTTP request {Method} {Path} started. RequestId: {RequestId}";

@@ -4,11 +4,24 @@ using ConferenceRoomBookingAPIv3.Application.Interfaces;
 
 namespace ConferenceRoomBookingAPIv3.Application.Services;
 
+/// <summary>
+/// Сервис для работы с бронированиями: поиск доступных залов и создание бронирований.
+/// </summary>
 public sealed class BookingService(
     IConferenceRoomRepository roomRepository,
     IBookingRepository bookingRepository,
     IPricingService pricing)
 {
+    /// <summary>
+    /// Поиск доступных конференц-залов для бронирования.
+    /// </summary>
+    /// <param name="startsAt">Дата и время начала бронирования.</param>
+    /// <param name="endsAt">Дата и время окончания бронирования.</param>
+    /// <param name="capacity">Минимальная требуемая вместимость.</param>
+    /// <param name="cancellationToken">Токен отмены операции.</param>
+    /// <returns>Список доступных залов, удовлетворяющих критериям.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Если capacity &lt;= 0.</exception>
+    /// <exception cref="ArgumentException">Если endsAt &lt;= startsAt.</exception>
     public async Task<IReadOnlyList<ConferenceRoom>> SearchAsync(DateTimeOffset startsAt, DateTimeOffset endsAt, int capacity, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
@@ -20,6 +33,20 @@ public sealed class BookingService(
         return await roomRepository.GetAvailableRoomsAsync(startsAt, endsAt, capacity, cancellationToken);
     }
 
+    /// <summary>
+    /// Создание нового бронирования конференц-зала.
+    /// Рассчитывает стоимость на основе тарифа зала и выбранных услуг.
+    /// </summary>
+    /// <param name="roomId">Идентификатор зала.</param>
+    /// <param name="startsAt">Дата и время начала бронирования.</param>
+    /// <param name="durationMinutes">Продолжительность в минутах.</param>
+    /// <param name="serviceIds">Идентификаторы выбранных услуг.</param>
+    /// <param name="cancellationToken">Токен отмены операции.</param>
+    /// <returns>Созданное бронирование с рассчитанной стоимостью.</returns>
+    /// <exception cref="ArgumentNullException">Если serviceIds is null.</exception>
+    /// <exception cref="ArgumentException">Если roomId is empty или durationMinutes &lt;= 0.</exception>
+    /// <exception cref="BookingException">Если зал не найден (RoomNotFound) или услуга не найдена (ServiceNotFound).</exception>
+    /// <exception cref="BookingException">Если время занято (BookingConflict).</exception>
     public async Task<Booking> CreateAsync(Guid roomId, DateTimeOffset startsAt, int durationMinutes, IEnumerable<Guid> serviceIds, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serviceIds);

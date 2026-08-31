@@ -171,6 +171,7 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         Name = room.Name,
         Capacity = room.Capacity,
         BaseHourlyRate = room.BaseHourlyRate,
+        RowVersion = room.RowVersion,
         Services = room.Services.Select(service => new RoomService
         {
             Id = service.Id,

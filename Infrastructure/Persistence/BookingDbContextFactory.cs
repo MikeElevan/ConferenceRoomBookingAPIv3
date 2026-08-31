@@ -5,10 +5,8 @@ using Microsoft.Extensions.Configuration;
 namespace ConferenceRoomBookingAPIv3.Infrastructure.Persistence;
 
 /// <summary>
-/// Lets `dotnet ef migrations add` / `dotnet ef database update` build a <see cref="BookingDbContext"/>
-/// without booting the full application host — which in non-Development environments requires a
-/// configured JWT authority/audience this tool has no reason to need. Only used by the EF Core CLI
-/// at design time; never invoked by the running application.
+/// Фабрика для создания <see cref="BookingDbContext"/> в design-time (EF Core CLI).
+/// Используется только для миграций, не вызывается в runtime.
 /// </summary>
 public sealed class BookingDbContextFactory : IDesignTimeDbContextFactory<BookingDbContext>
 {

@@ -1,14 +1,16 @@
 namespace ConferenceRoomBookingAPIv3.Constants;
 
+/// <summary>
+/// Ограничения бизнес-логики.
+/// </summary>
 public static class ReportLimits
 {
     /// <summary>
-    /// Upper bound on how wide a report's [From, To) range may be. Enforced in two places on
-    /// purpose: <see cref="ConferenceRoomBookingAPIv3.Contracts.RequestModels.ReportRequest"/>
-    /// for a fast, specific 400 at the API boundary, and
-    /// <see cref="ConferenceRoomBookingAPIv3.Application.Services.ReportService"/> for callers
-    /// that reach the service without going through that DTO. Both read this constant so the
-    /// two checks can't drift apart.
+    /// Максимальная ширина диапазона отчёта в днях. Проверяется в двух местах:
+    /// <see cref="ConferenceRoomBookingAPIv3.Contracts.RequestModels.ReportRequest"/> —
+    /// для быстрого 400 на границе API, и
+    /// <see cref="ConferenceRoomBookingAPIv3.Application.Services.ReportService"/> — для вызовов,
+    /// минующих DTO. Оба места читают эту константу, чтобы проверки не расходились.
     /// </summary>
     public const int MaximumRangeDays = 366;
 }

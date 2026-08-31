@@ -1,14 +1,15 @@
 ﻿namespace ConferenceRoomBookingAPIv3.Infrastructure;
 
 /// <summary>
-/// Configuration for the fake authentication handler used only in the Development environment.
-/// Lets a developer change the simulated user's name and roles from appsettings.Development.json
-/// without touching code or requiring a real JWT.
+/// Настройки фейковой аутентификации для Development-окружения.
 /// </summary>
 public sealed class DevelopmentAuthOptions
 {
     public const string SectionName = "DevelopmentAuth";
 
+    /// <summary>Имя пользователя.</summary>
     public string UserName { get; init; } = "dev-user";
+
+    /// <summary>Роли пользователя.</summary>
     public List<string> Roles { get; init; } = new();
 }

@@ -4,6 +4,10 @@ using Microsoft.Extensions.Options;
 
 namespace ConferenceRoomBookingAPIv3.Application.Services;
 
+/// <summary>
+/// Сервис расчёта стоимости бронирования на основе временных окон.
+/// Поддерживает динамическое ценообразование с учётом часового пояса и перехода на летнее/зимнее время.
+/// </summary>
 public sealed class PricingService : IPricingService
 {
     private readonly TimeZoneInfo businessTimeZone;
@@ -69,6 +73,20 @@ public sealed class PricingService : IPricingService
         nightMultiplier = value.NightMultiplier;
     }
 
+    /// <summary>
+    /// Рассчитать стоимость аренды зала с учётом временных окон ценообразования.
+    /// Стоимость вычисляется по часам: каждый отрезок времени умножается на множитель соответствующего окна.
+    /// </summary>
+    /// <param name="hourlyRate">Базовая почасовая ставка зала.</param>
+    /// <param name="startsAt">Дата и время начала бронирования.</param>
+    /// <param name="endsAt">Дата и время окончания бронирования.</param>
+    /// <returns>Общая стоимость аренды, округлённая до 2 знаков.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Если hourlyRate &lt;= 0.</exception>
+    /// <exception cref="ArgumentException">Если endsAt &lt;= startsAt.</exception>
+    /// <remarks>
+    /// Время конвертируется в локальное по часовому поясу из PricingOptions.TimeZoneId.
+    /// Корректно обрабатывает переход на летнее/зимнее время (DST).
+    /// </remarks>
     public decimal CalculateRoomCost(decimal hourlyRate, DateTimeOffset startsAt, DateTimeOffset endsAt)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(hourlyRate);

@@ -5,8 +5,20 @@ using ConferenceRoomBookingAPIv3.DomainModels;
 
 namespace ConferenceRoomBookingAPIv3.Application.Services;
 
+/// <summary>
+/// Сервис построения отчётов по бронированиям.
+/// Генерирует статистику использования залов и выручки по услугам за указанный период.
+/// </summary>
 public sealed class ReportService(IConferenceRoomRepository roomRepository, IBookingRepository bookingRepository)
 {
+    /// <summary>
+    /// Получить отчёт по бронированиям за указанный период.
+    /// </summary>
+    /// <param from="from">Начало периода.</param>
+    /// <param to="to">Конец периода (не более 366 дней).</param>
+    /// <param cancellationToken="cancellationToken">Токен отмены операции.</param>
+    /// <returns>Отчёт с общей статистикой, детализацией по залам и услугам.</returns>
+    /// <exception cref="ArgumentException">Если to &lt;= from или период превышает 366 дней.</exception>
     public async Task<BookingReportResponse> GetBookingReportAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
         if (to <= from)

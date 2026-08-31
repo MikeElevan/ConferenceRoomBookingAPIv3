@@ -2,14 +2,20 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 
+/// <summary>
+/// Запрос на поиск доступных конференц-залов.
+/// </summary>
 public sealed class AvailabilityRequest : IValidatableObject
 {
+    /// <summary>Дата и время начала бронирования.</summary>
     [Required]
     public DateTimeOffset? StartsAt { get; init; }
 
+    /// <summary>Дата и время окончания бронирования.</summary>
     [Required]
     public DateTimeOffset? EndsAt { get; init; }
 
+    /// <summary>Минимальная требуемая вместимость (1-100000).</summary>
     [Range(1, 100_000)]
     public int Capacity { get; init; }
 

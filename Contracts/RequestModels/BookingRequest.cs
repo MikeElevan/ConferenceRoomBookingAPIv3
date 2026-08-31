@@ -2,17 +2,24 @@ using System.ComponentModel.DataAnnotations;
 
 namespace ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 
+/// <summary>
+/// Запрос на создание бронирования конференц-зала.
+/// </summary>
 public sealed class BookingRequest : IValidatableObject
 {
+    /// <summary>Идентификатор зала.</summary>
     [Required]
     public Guid? RoomId { get; init; }
 
+    /// <summary>Дата и время начала бронирования.</summary>
     [Required]
     public DateTimeOffset? StartsAt { get; init; }
 
+    /// <summary>Продолжительность в минутах (1-10080).</summary>
     [Range(1, 10_080)]
     public int DurationMinutes { get; init; }
 
+    /// <summary>Идентификаторы выбранных услуг.</summary>
     public List<Guid> ServiceIds { get; init; } = new List<Guid>();
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

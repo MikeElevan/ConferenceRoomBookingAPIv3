@@ -3,8 +3,12 @@ using ConferenceRoomBookingAPIv3.DomainModels;
 
 namespace ConferenceRoomBookingAPIv3.Controllers.Helpers;
 
+/// <summary>
+/// Маппинг Booking domain model → BookingResponse DTO.
+/// </summary>
 public static class BookingsHelper
 {
+    /// <summary>Преобразует доменную модель бронирования в контракт ответа.</summary>
     public static BookingResponse ToResponse(Booking booking)
     {
         ArgumentNullException.ThrowIfNull(booking);
