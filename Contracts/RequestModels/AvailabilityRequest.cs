@@ -16,7 +16,7 @@ public sealed class AvailabilityRequest : IValidatableObject
     public DateTimeOffset? EndsAt { get; init; }
 
     /// <summary>Минимальная требуемая вместимость (1-100000).</summary>
-    [Range(1, 100_000)]
+    [Required, Range(1, 100_000)]
     public int Capacity { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
