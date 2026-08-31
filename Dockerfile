@@ -7,6 +7,11 @@ WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
 
+# The container starts in the Development environment so Swagger + fake auth work without an
+# external Identity Provider. Override with -e ASPNETCORE_ENVIRONMENT=Production and provide
+# Security__Authority / Security__Audience for real deployments.
+ENV ASPNETCORE_ENVIRONMENT=Development
+
 
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

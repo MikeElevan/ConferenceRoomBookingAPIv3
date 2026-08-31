@@ -10,6 +10,7 @@ namespace ConferenceRoomBookingAPIv3.Application.Services;
 public sealed class BookingService(
     IConferenceRoomRepository roomRepository,
     IBookingRepository bookingRepository,
+    IBookingTransactionExecutor bookingTransactionExecutor,
     IPricingService pricing)
 {
     /// <summary>
@@ -42,7 +43,8 @@ public sealed class BookingService(
     /// <param name="durationMinutes">Продолжительность в минутах.</param>
     /// <param name="serviceIds">Идентификаторы выбранных услуг.</param>
     /// <param name="cancellationToken">Токен отмены операции.</param>
-    /// <returns>Созданное бронирование с рассчитанной стоимостью.</returns>
+    /// <returns>Созданное бронирование с рассчитанной стоимостью; при повторном запросе
+    /// с тем же IdempotencyKey — ранее созданное бронирование.</returns>
     /// <exception cref="ArgumentNullException">Если serviceIds is null.</exception>
     /// <exception cref="ArgumentException">Если roomId is empty или durationMinutes &lt;= 0.</exception>
     /// <exception cref="BookingException">Если зал не найден (RoomNotFound) или услуга не найдена (ServiceNotFound).</exception>
@@ -78,30 +80,34 @@ public sealed class BookingService(
             throw new BookingException(ErrorCode.ServiceNotFound, ErrorMessages.ServiceNotFound);
         }
 
-        Guid bookingId = Guid.NewGuid();
-        var booking = new Booking
-        {
-            Id = bookingId,
-            RoomId = roomId,
-            StartsAt = startsAt,
-            EndsAt = endsAt,
-            IdempotencyKey = idempotencyKey,
-            Services = selectedServices.Select(service => new BookingServiceSnapshot
-            {
-                BookingId = bookingId,
-                ServiceId = service.Id,
-                Name = service.Name,
-                Price = service.Price
-            }).ToList(),
-            RoomCost = pricing.CalculateRoomCost(room.BaseHourlyRate, startsAt, endsAt),
-            ServicesCost = selectedServices.Sum(service => service.Price)
-        };
+        Booking booking = BookingFactory.Create(
+            roomId, startsAt, endsAt, idempotencyKey, selectedServices,
+            pricing.CalculateRoomCost(room.BaseHourlyRate, startsAt, endsAt));
 
-        if (!await bookingRepository.TryAddBookingAsync(booking, cancellationToken))
+        Booking? savedBooking = await bookingTransactionExecutor.TryAddBookingAsync(booking, cancellationToken);
+        if (savedBooking is null)
         {
             throw new BookingException(ErrorCode.BookingConflict, ErrorMessages.BookingConflict);
         }
 
-        return booking;
+        // При гонке двух POST с одинаковым IdempotencyKey здесь окажется бронирование,
+        // созданное первым запросом — повторный запрос вернёт тот же результат (идемпотентность).
+        return savedBooking;
+    }
+
+    /// <summary>
+    /// Получить бронирование по идентификатору.
+    /// </summary>
+    /// <param name="id">Идентификатор бронирования.</param>
+    /// <param name="cancellationToken">Токен отмены операции.</param>
+    /// <returns>Бронирование или null, если бронирование не найдено.</returns>
+    public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty)
+        {
+            throw new ArgumentException("The booking identifier cannot be empty.", nameof(id));
+        }
+
+        return bookingRepository.GetByIdAsync(id, cancellationToken);
     }
 }

@@ -85,6 +85,21 @@ API будет доступен по умолчанию на `https://localhost:
 
 Swagger UI: `https://localhost:5001/swagger`
 
+### Docker
+
+Образ собирается из `Dockerfile`. Контейнер по умолчанию запускается в среде `Development`
+(см. `ENV ASPNETCORE_ENVIRONMENT=Development` в Dockerfile), поэтому Swagger и фейковая
+аутентификация работают без внешнего Identity Provider. Для продакшена переопределите
+окружение и укажите параметры JWT:
+
+```bash
+docker run -p 8080:8080 \
+  -e ASPNETCORE_ENVIRONMENT=Production \
+  -e Security__Authority=https://your-idp.example.com \
+  -e Security__Audience=conference-room-api \
+  conference-room-booking-api
+```
+
 ### Конфигурация
 
 Основные секции `appsettings.json`:
@@ -169,7 +184,8 @@ GET /api/v1/rooms/available?startsAt=2024-09-01T10:00:00Z&endsAt=2024-09-01T12:0
 
 | Метод | Путь | Описание | Роль |
 |-------|------|----------|------|
-| POST | `/bookings` | Создать бронирование | Any authenticated |
+| POST | `/bookings` | Создать бронирование (ответ 201 содержит `Location`) | Any authenticated |
+| GET | `/bookings/{id}` | Получить бронирование по ID | Any authenticated |
 
 ```bash
 POST /api/v1/bookings
@@ -237,25 +253,33 @@ GET /api/v1/reports/bookings?from=2024-09-01T00:00:00Z&to=2024-09-30T23:59:59Z
 
 ## Обработка ошибок
 
-API возвращает стандартизированные ошибки в формате:
+API возвращает ошибки в формате RFC 7807 (Problem Details). Машинный код ошибки находится
+в поле `title`, человекочитаемое описание — в поле `detail`:
 
 ```json
 {
-  "code": "ErrorCode",
-  "message": "Human readable message"
+  "title": "booking_conflict",
+  "status": 409,
+  "detail": "The room is already booked for the requested interval.",
+  "instance": "/api/v1/bookings"
 }
 ```
 
-| HTTP | Code | Описание |
-|------|------|----------|
-| 400 | `InvalidRequest` | Ошибка валидации входных данных |
+Ошибки валидации модели (`[ApiController]`) возвращают `ValidationProblemDetails` (HTTP 400)
+с детализацией по полям в свойстве `errors`.
+
+| HTTP | `title` | Описание |
+|------|---------|----------|
+| 400 | `invalid_request` | Невалидные аргументы запроса |
+| 400 | — | Ошибки валидации модели (детали в `errors`) |
 | 401 | - | Не аутентифицирован |
 | 403 | - | Недостаточно прав |
-| 404 | `RoomNotFound` | Комната не найдена |
-| 404 | `ServiceNotFound` | Услуга не найдена |
-| 409 | `BookingConflict` | Конфликт бронирования (занято) |
-| 409 | `ConcurrencyConflict` | Конкурентное изменение (lost update) |
-| 409 | `RoomHasBookings` | Нельзя удалить комнату с бронированиями |
+| 404 | `room_not_found` | Комната не найдена |
+| 404 | `service_not_found` | Услуга не найдена |
+| 409 | `booking_conflict` | Конфликт бронирования (занято) |
+| 409 | `concurrency_conflict` | Конкурентное изменение (lost update) |
+| 409 | `room_has_bookings` | Нельзя удалить комнату с бронированиями |
+| 409 | `service_name_conflict` | Конкурентное добавление услуги с тем же именем |
 | 429 | - | Превышен лимит запросов |
 
 ## Тестирование

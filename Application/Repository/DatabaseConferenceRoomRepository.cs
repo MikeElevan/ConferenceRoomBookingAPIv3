@@ -7,7 +7,12 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ConferenceRoomBookingAPIv3.Application.Repository;
 
-public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext, IDbContextFactory<BookingDbContext> contextFactory) : IConferenceRoomRepository, IBookingRepository
+/// <summary>
+/// Репозиторий конференц-залов на основе EF Core.
+/// Реализует только CRUD-операции для залов и их услуг.
+/// Транзакционные операции с бронированиями вынесены в отдельные классы (ISP).
+/// </summary>
+public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext, IDbContextFactory<BookingDbContext> contextFactory) : IConferenceRoomRepository
 {
     public async Task<IReadOnlyList<ConferenceRoom>> GetRoomsAsync(CancellationToken cancellationToken = default) =>
         await dbContext.Rooms
@@ -30,63 +35,6 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
     {
         ValidateIdentifier(id, nameof(id));
         return GetRoomInternalAsync(id, cancellationToken);
-    }
-
-    public async Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
-    {
-        if (to <= from)
-        {
-            throw new ArgumentException("The ending time must be later than the starting time.", nameof(to));
-        }
-
-        return await dbContext.Bookings
-            .AsNoTracking()
-            .Include(booking => booking.Services)
-            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
-            .ToListAsync(cancellationToken);
-    }
-
-    public Task<Booking?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default) =>
-        dbContext.Bookings
-            .AsNoTracking()
-            .Include(booking => booking.Services)
-            .SingleOrDefaultAsync(booking => booking.IdempotencyKey == idempotencyKey, cancellationToken);
-
-    public async Task<IReadOnlyList<RoomBookingStats>> GetRoomBookingStatsAsync(
-        DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
-    {
-        List<RoomBookingStats> stats = await dbContext.Bookings
-            .AsNoTracking()
-            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
-            .GroupBy(booking => booking.RoomId)
-            .Select(group => new RoomBookingStats(
-                group.Key,
-                group.Count(),
-                group.Sum(b => b.RoomCost + b.ServicesCost),
-                group.Sum(b => EF.Functions.DateDiffSecond(
-                    b.StartsAt > from ? b.StartsAt : from,
-                    b.EndsAt < to ? b.EndsAt : to) / 3600.0)))
-            .ToListAsync(cancellationToken);
-
-        return stats;
-    }
-
-    public async Task<IReadOnlyList<ServiceStats>> GetServiceStatsAsync(
-        DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
-    {
-        List<ServiceStats> stats = await dbContext.Bookings
-            .AsNoTracking()
-            .Where(booking => booking.StartsAt < to && from < booking.EndsAt)
-            .SelectMany(booking => booking.Services)
-            .GroupBy(service => new { service.ServiceId, service.Name })
-            .Select(group => new ServiceStats(
-                group.Key.ServiceId,
-                group.Key.Name,
-                group.Count(),
-                group.Sum(s => s.Price)))
-            .ToListAsync(cancellationToken);
-
-        return stats;
     }
 
     private Task<ConferenceRoom?> GetRoomInternalAsync(Guid id, CancellationToken cancellationToken) =>
@@ -188,69 +136,11 @@ public sealed class DatabaseConferenceRoomRepository(BookingDbContext dbContext,
         });
     }
 
-    public Task<IReadOnlyList<Booking>> GetBookingsAsync(Guid roomId, CancellationToken cancellationToken = default)
-    {
-        ValidateIdentifier(roomId, nameof(roomId));
-        return GetBookingsInternalAsync(roomId, cancellationToken);
-    }
-
-    private async Task<IReadOnlyList<Booking>> GetBookingsInternalAsync(Guid roomId, CancellationToken cancellationToken) =>
-        await dbContext.Bookings
-            .AsNoTracking()
-            .Include(booking => booking.Services)
-            .Where(booking => booking.RoomId == roomId)
-            .ToListAsync(cancellationToken);
-
-    public async Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(booking);
-        ValidateBooking(booking);
-
-        IExecutionStrategy strategy = dbContext.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(async () =>
-        {
-            await using BookingDbContext attempt = await contextFactory.CreateDbContextAsync(cancellationToken);
-            await using IDbContextTransaction transaction =
-                await attempt.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
-
-            // A transient error from CommitAsync leaves its outcome unknown. If the commit did
-            // succeed, a retry must recognize this booking rather than treating it as a conflict.
-            if (await attempt.Bookings.AsNoTracking().AnyAsync(existing => existing.Id == booking.Id, cancellationToken))
-            {
-                return true;
-            }
-
-            bool hasConflict = await attempt.Bookings.AnyAsync(existing =>
-                existing.RoomId == booking.RoomId &&
-                existing.StartsAt < booking.EndsAt &&
-                booking.StartsAt < existing.EndsAt, cancellationToken);
-
-            if (hasConflict)
-            {
-                return false;
-            }
-
-            attempt.Bookings.Add(booking);
-            await attempt.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return true;
-        });
-    }
-
     private static void ValidateIdentifier(Guid identifier, string parameterName)
     {
         if (identifier == Guid.Empty)
         {
             throw new ArgumentException("The identifier cannot be empty.", parameterName);
-        }
-    }
-
-    private static void ValidateBooking(Booking booking)
-    {
-        ValidateIdentifier(booking.RoomId, nameof(booking.RoomId));
-        if (booking.EndsAt <= booking.StartsAt)
-        {
-            throw new ArgumentException("The ending time must be later than the starting time.", nameof(booking));
         }
     }
 }

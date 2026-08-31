@@ -59,6 +59,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddHealthChecks();
 builder.Services.Configure<HttpLoggingOptions>(builder.Configuration.GetSection(HttpLoggingOptions.SectionName));
 builder.Services.Configure<PricingOptions>(builder.Configuration.GetSection(PricingOptions.SectionName));
+builder.Services.AddSystemTimeZoneProvider();
 if (persistenceOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
 {
     string connectionString = builder.Configuration.GetConnectionString(persistenceOptions.ConnectionStringName)
@@ -76,14 +77,17 @@ if (persistenceOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgno
             null)));
 
     builder.Services.AddScoped<DatabaseConferenceRoomRepository>();
+    builder.Services.AddScoped<DatabaseBookingRepository>();
     builder.Services.AddScoped<IConferenceRoomRepository>(sp => sp.GetRequiredService<DatabaseConferenceRoomRepository>());
-    builder.Services.AddScoped<IBookingRepository>(sp => sp.GetRequiredService<DatabaseConferenceRoomRepository>());
+    builder.Services.AddScoped<IBookingRepository>(sp => sp.GetRequiredService<DatabaseBookingRepository>());
+    builder.Services.AddScoped<IBookingTransactionExecutor, DatabaseBookingTransactionExecutor>();
 }
 else if (persistenceOptions.Provider.Equals("InMemory", StringComparison.OrdinalIgnoreCase))
 {
     builder.Services.AddSingleton<InMemoryConferenceRoomRepository>();
     builder.Services.AddSingleton<IConferenceRoomRepository>(sp => sp.GetRequiredService<InMemoryConferenceRoomRepository>());
     builder.Services.AddSingleton<IBookingRepository>(sp => sp.GetRequiredService<InMemoryConferenceRoomRepository>());
+    builder.Services.AddSingleton<IBookingTransactionExecutor>(sp => sp.GetRequiredService<InMemoryConferenceRoomRepository>());
 }
 else
 {

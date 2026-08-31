@@ -1,3 +1,4 @@
+using ConferenceRoomBookingAPIv3.Application.Services;
 using ConferenceRoomBookingAPIv3.Contracts.RequestModels;
 using ConferenceRoomBookingAPIv3.Contracts.ResponseModels;
 using ConferenceRoomBookingAPIv3.DomainModels;
@@ -69,31 +70,16 @@ public static class ConferenceRoomsHelper
             if (index >= 0)
             {
                 // RoomService immutable — заменяем элемент новым вместо мутации
-                room.Services[index] = new RoomService
-                {
-                    Id = room.Services[index].Id,
-                    Name = name,
-                    Price = incoming.Price
-                };
+                room.Services[index] = RoomServiceFactory.CreateWithId(room.Services[index].Id, name, incoming.Price);
                 continue;
             }
 
-            room.Services.Add(new RoomService
-            {
-                Id = Guid.NewGuid(),
-                Name = name,
-                Price = incoming.Price
-            });
+            room.Services.Add(RoomServiceFactory.Create(name, incoming.Price));
         }
     }
 
     private static List<RoomService> ToServices(IEnumerable<RoomServiceRequest> services) =>
-        services.Select(service => new RoomService
-        {
-            Id = Guid.NewGuid(),
-            Name = service.Name.Trim(),
-            Price = service.Price
-        }).ToList();
+        services.Select(service => RoomServiceFactory.Create(service.Name, service.Price)).ToList();
 
     private static ServiceResponse ToServiceResponse(RoomService service) =>
         new(service.Id, service.Name, service.Price);

@@ -29,6 +29,19 @@ public sealed class BookingsController(BookingService service) : ControllerBase
         ArgumentNullException.ThrowIfNull(request);
 
         Booking booking = await service.CreateAsync(request.RoomId!.Value, request.StartsAt!.Value, request.DurationMinutes, request.ServiceIds, request.IdempotencyKey, cancellationToken);
-        return StatusCode(StatusCodes.Status201Created, BookingsHelper.ToResponse(booking));
+        return CreatedAtAction(nameof(Get), new { id = booking.Id }, BookingsHelper.ToResponse(booking));
+    }
+
+    /// <summary>
+    /// Получить бронирование по идентификатору.
+    /// </summary>
+    /// <param name="id">Идентификатор бронирования.</param>
+    /// <param name="cancellationToken">Токен отмены операции.</param>
+    /// <returns>Бронирование или 404 Not Found.</returns>
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<BookingResponse>> Get(Guid id, CancellationToken cancellationToken)
+    {
+        Booking? booking = await service.GetByIdAsync(id, cancellationToken);
+        return booking is null ? NotFound() : Ok(BookingsHelper.ToResponse(booking));
     }
 }

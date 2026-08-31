@@ -26,8 +26,10 @@ public sealed class BookingRequest : IValidatableObject
     /// <summary>
     /// Ключ идемпотентности. При повторной отправке запроса с тем же ключом вернётся
     /// результат первого выполнения вместо создания дубликата. Рекомендуется использовать
-    /// GUID, сгенерированный клиентом.
+    /// GUID, сгенерированный клиентом. Максимальная длина — 100 символов (совпадает
+    /// с ограничением столбца в БД).
     /// </summary>
+    [StringLength(100)]
     public string? IdempotencyKey { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

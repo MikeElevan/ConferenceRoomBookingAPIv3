@@ -1,3 +1,4 @@
+using ConferenceRoomBookingAPIv3.Application.Services;
 using ConferenceRoomBookingAPIv3.DomainModels;
 using ConferenceRoomBookingAPIv3.Application.Interfaces;
 using ConferenceRoomBookingAPIv3.Application;
@@ -5,7 +6,13 @@ using ConferenceRoomBookingAPIv3.Constants;
 
 namespace ConferenceRoomBookingAPIv3.Application.Repository;
 
-public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository, IBookingRepository
+/// <summary>
+/// Ин-memory хранилище залов и бронирований для dev-режима и тестов.
+/// Реализует интерфейсы залов, бронирований и транзакционного исполнителя,
+/// так как это единое хранилище: разделение на отдельные классы
+/// потребовало бы передачи общего внутреннего состояния между ними.
+/// </summary>
+public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository, IBookingRepository, IBookingTransactionExecutor
 {
     private readonly Lock sync = new();
     private readonly Dictionary<Guid, ConferenceRoom> rooms = new Dictionary<Guid, ConferenceRoom>();
@@ -53,12 +60,7 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
             Name = name,
             Capacity = capacity,
             BaseHourlyRate = rate,
-            Services = services.Select(service => new RoomService
-            {
-                Id = Guid.NewGuid(),
-                Name = service.Name,
-                Price = service.Price
-            }).ToList()
+            Services = services.Select(service => RoomServiceFactory.Create(service.Name, service.Price)).ToList()
         };
 
         rooms.Add(room.Id, room);
@@ -147,7 +149,19 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
     {
         lock (sync)
         {
-            return Task.FromResult(bookings.FirstOrDefault(booking => booking.IdempotencyKey == idempotencyKey));
+            Booking? existing = bookings.FirstOrDefault(booking => booking.IdempotencyKey == idempotencyKey);
+            return Task.FromResult(existing is null ? null : CloneBooking(existing));
+        }
+    }
+
+    public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        ValidateIdentifier(id, nameof(id));
+
+        lock (sync)
+        {
+            Booking? existing = bookings.FirstOrDefault(booking => booking.Id == id);
+            return Task.FromResult(existing is null ? null : CloneBooking(existing));
         }
     }
 
@@ -197,7 +211,7 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         return overlapEnd > overlapStart ? (overlapEnd - overlapStart).TotalHours : 0d;
     }
 
-    public Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
+    public Task<Booking?> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(booking);
         ValidateBooking(booking);
@@ -211,11 +225,22 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
 
             if (hasConflict)
             {
-                return Task.FromResult(false);
+                return Task.FromResult<Booking?>(null);
+            }
+
+            // Idempotency guard inside the same lock as the insert: if a concurrent request with
+            // the same key already committed, return its booking instead of creating a duplicate.
+            if (!string.IsNullOrWhiteSpace(booking.IdempotencyKey))
+            {
+                Booking? existing = bookings.FirstOrDefault(item => item.IdempotencyKey == booking.IdempotencyKey);
+                if (existing is not null)
+                {
+                    return Task.FromResult<Booking?>(CloneBooking(existing));
+                }
             }
 
             bookings.Add(CloneBooking(booking));
-            return Task.FromResult(true);
+            return Task.FromResult<Booking?>(booking);
         }
     }
 
@@ -226,12 +251,7 @@ public sealed class InMemoryConferenceRoomRepository : IConferenceRoomRepository
         Capacity = room.Capacity,
         BaseHourlyRate = room.BaseHourlyRate,
         RowVersion = room.RowVersion,
-        Services = room.Services.Select(service => new RoomService
-        {
-            Id = service.Id,
-            Name = service.Name,
-            Price = service.Price
-        }).ToList()
+        Services = room.Services.Select(RoomServiceFactory.Clone).ToList()
     };
 
     private static Booking CloneBooking(Booking booking) => new()

@@ -7,8 +7,8 @@ namespace ConferenceRoomBookingAPIv3.UnitTests;
 
 public sealed class PricingServiceTests
 {
-    private readonly PricingService pricingService =
-        new(Options.Create(new PricingOptions { TimeZoneId="Europe/Kyiv" }));
+        private readonly PricingService pricingService =
+        new(Options.Create(new PricingOptions { TimeZoneId = "Europe/Kyiv" }), new SystemTimeZoneProvider());
 
     [Theory]
     [InlineData("2024-09-02T09:00:00+03:00", 1, 2000, 2000)]   // standard hours, no adjustment

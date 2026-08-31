@@ -10,6 +10,7 @@ namespace ConferenceRoomBookingAPIv3.Application.Services;
 /// </summary>
 public sealed class PricingService : IPricingService
 {
+    private readonly ITimeZoneProvider timeZoneProvider;
     private readonly TimeZoneInfo businessTimeZone;
 
     private readonly int morningDiscountStartHour;
@@ -25,15 +26,17 @@ public sealed class PricingService : IPricingService
     private readonly decimal eveningDiscountMultiplier;
     private readonly decimal nightMultiplier;
 
-    public PricingService(IOptions<PricingOptions> options)
+    public PricingService(IOptions<PricingOptions> options, ITimeZoneProvider timeZoneProvider)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(timeZoneProvider);
         PricingOptions value = options.Value;
 
+        this.timeZoneProvider = timeZoneProvider;
         string timeZoneId = value.TimeZoneId;
         try
         {
-            businessTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            businessTimeZone = timeZoneProvider.FindTimeZoneById(timeZoneId);
         }
         catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException)
         {
@@ -95,8 +98,8 @@ public sealed class PricingService : IPricingService
             throw new ArgumentException("The ending time must be later than the starting time.", nameof(endsAt));
         }
 
-        DateTime currentLocal = TimeZoneInfo.ConvertTime(startsAt, businessTimeZone).DateTime;
-        DateTime endLocal = TimeZoneInfo.ConvertTime(endsAt, businessTimeZone).DateTime;
+        DateTime currentLocal = timeZoneProvider.ConvertTime(startsAt, businessTimeZone).DateTime;
+        DateTime endLocal = timeZoneProvider.ConvertTime(endsAt, businessTimeZone).DateTime;
 
         decimal total = 0m;
 

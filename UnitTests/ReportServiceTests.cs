@@ -296,7 +296,7 @@ public sealed class ReportServiceTests
         public FakeBookingRepository(IReadOnlyList<Booking> bookings) => this.bookings = bookings;
         public Task<IReadOnlyList<Booking>> GetBookingsAsync(Guid roomId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(bookings.Where(b => b.RoomId == roomId).ToList());
         public Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Booking>>(bookings.Where(b => b.StartsAt < to && b.EndsAt > from).ToList());
-        public Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(bookings.FirstOrDefault(b => b.Id == id));
         public Task<Booking?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default) =>
             Task.FromResult(bookings.FirstOrDefault(b => b.IdempotencyKey == idempotencyKey));
 

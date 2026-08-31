@@ -144,6 +144,29 @@ public sealed class BookingsApiTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task CreateBooking_ReturnsLocationHeader_AndBookingCanBeFetchedById()
+    {
+        (Guid roomId, Guid serviceId) = await GetRoomAndServiceAsync();
+        DateTimeOffset startsAt = DateTimeOffset.UtcNow.AddHours(8);
+
+        using (HttpContent content = JsonContent.Create(CreateBookingRequest(roomId, startsAt, serviceId)))
+        {
+            HttpResponseMessage response = await client.PostAsync("/api/v1/bookings", content);
+            JsonElement booking = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            Assert.NotNull(response.Headers.Location);
+
+            Guid bookingId = booking.GetProperty("id").GetGuid();
+            HttpResponseMessage getResponse = await client.GetAsync(response.Headers.Location!);
+            JsonElement fetched = await getResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+            Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+            Assert.Equal(bookingId, fetched.GetProperty("id").GetGuid());
+        }
+    }
+
     private async Task<(Guid RoomId, Guid ServiceId)> GetRoomAndServiceAsync()
     {
         HttpResponseMessage response = await client.GetAsync("/api/v1/rooms");

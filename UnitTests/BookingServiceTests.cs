@@ -19,7 +19,8 @@ public sealed class BookingServiceTests
             Services = new List<RoomService> { service }
         };
         CapturingBookingRepository bookings = new();
-        BookingService subject = new(new RoomRepository(room), bookings, new FixedPricingService());
+        CapturingBookingTransactionExecutor executor = new();
+        BookingService subject = new(new RoomRepository(room), bookings, executor, new FixedPricingService());
 
         Booking booking = await subject.CreateAsync(roomId, DateTimeOffset.UtcNow.AddHours(1), 60, new[] { serviceId });
 
@@ -30,7 +31,7 @@ public sealed class BookingServiceTests
         Assert.Equal("Projector", snapshot.Name);
         Assert.Equal(500m, snapshot.Price);
         Assert.Equal(500m, booking.ServicesCost);
-        Assert.Same(booking, bookings.LastBooking);
+        Assert.Same(booking, executor.CapturedBooking);
     }
 
     [Fact]
@@ -59,7 +60,8 @@ public sealed class BookingServiceTests
         };
 
         IdempotentBookingRepository bookings = new(firstBooking);
-        BookingService subject = new(new RoomRepository(room), bookings, new FixedPricingService());
+        CapturingBookingTransactionExecutor executor = new();
+        BookingService subject = new(new RoomRepository(room), bookings, executor, new FixedPricingService());
 
         // Second request with same idempotency key
         Booking result = await subject.CreateAsync(roomId, DateTimeOffset.UtcNow.AddHours(5), 60, new[] { serviceId }, idempotencyKey);
@@ -69,6 +71,46 @@ public sealed class BookingServiceTests
         Assert.Single(bookings.AllBookings); // No duplicate created
     }
 
+    [Fact]
+    public async Task CreateAsync_ReturnsFirstCommittedBooking_WhenExecutorResolvesIdempotencyRace()
+    {
+        Guid roomId = Guid.NewGuid();
+        Guid serviceId = Guid.NewGuid();
+        RoomService service = new() { Id = serviceId, Name = "Projector", Price = 500m };
+        ConferenceRoom room = new()
+        {
+            Id = roomId, Name = "Room", Capacity = 1, BaseHourlyRate = 1000m,
+            Services = new List<RoomService> { service }
+        };
+        string idempotencyKey = "race-key-456";
+
+        // The winner committed before this request reached the executor; the executor (which in
+        // SQL Server detects the unique-index collision) returns the already-committed booking.
+        Booking firstCommitted = new()
+        {
+            Id = Guid.NewGuid(),
+            RoomId = roomId,
+            StartsAt = DateTimeOffset.UtcNow.AddHours(1),
+            EndsAt = DateTimeOffset.UtcNow.AddHours(2),
+            IdempotencyKey = idempotencyKey,
+            RoomCost = 1000m,
+            ServicesCost = 500m
+        };
+        RaceResolvingBookingTransactionExecutor executor = new(firstCommitted);
+        BookingService subject = new(new RoomRepository(room), new CapturingBookingRepository(), executor, new FixedPricingService());
+
+        Booking result = await subject.CreateAsync(roomId, DateTimeOffset.UtcNow.AddHours(3), 60, new[] { serviceId }, idempotencyKey);
+
+        Assert.Equal(firstCommitted.Id, result.Id);
+        Assert.Equal(idempotencyKey, result.IdempotencyKey);
+    }
+
+    private sealed class RaceResolvingBookingTransactionExecutor(Booking existing) : IBookingTransactionExecutor
+    {
+        public Task<Booking?> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Booking?>(existing);
+    }
+
     private sealed class FixedPricingService : IPricingService
     {
         public decimal CalculateRoomCost(decimal hourlyRate, DateTimeOffset startsAt, DateTimeOffset endsAt) => hourlyRate;
@@ -76,22 +118,28 @@ public sealed class BookingServiceTests
 
     private sealed class CapturingBookingRepository : IBookingRepository
     {
-        public Booking? LastBooking { get; private set; }
-        public Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
-        {
-            LastBooking = booking;
-            return Task.FromResult(true);
-        }
         public Task<IReadOnlyList<Booking>> GetBookingsAsync(Guid roomId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Booking>>(Array.Empty<Booking>());
         public Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Booking>>(Array.Empty<Booking>());
+        public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Booking?>(null);
         public Task<Booking?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default) =>
             Task.FromResult<Booking?>(null);
         public Task<IReadOnlyList<RoomBookingStats>> GetRoomBookingStatsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<RoomBookingStats>>(Array.Empty<RoomBookingStats>());
         public Task<IReadOnlyList<ServiceStats>> GetServiceStatsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ServiceStats>>(Array.Empty<ServiceStats>());
+    }
+
+    private sealed class CapturingBookingTransactionExecutor : IBookingTransactionExecutor
+    {
+        public Booking? CapturedBooking { get; private set; }
+        public Task<Booking?> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
+        {
+            CapturedBooking = booking;
+            return Task.FromResult<Booking?>(booking);
+        }
     }
 
     private sealed class RoomRepository(ConferenceRoom room) : IConferenceRoomRepository
@@ -121,6 +169,9 @@ public sealed class BookingServiceTests
         public Task<IReadOnlyList<Booking>> GetBookingsInRangeAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Booking>>(bookings.Where(b => b.StartsAt < to && b.EndsAt > from).ToList());
 
+        public Task<Booking?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(bookings.FirstOrDefault(b => b.Id == id));
+
         public Task<Booking?> GetByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default) =>
             Task.FromResult(bookings.FirstOrDefault(b => b.IdempotencyKey == idempotencyKey));
 
@@ -128,11 +179,5 @@ public sealed class BookingServiceTests
             Task.FromResult<IReadOnlyList<RoomBookingStats>>(Array.Empty<RoomBookingStats>());
         public Task<IReadOnlyList<ServiceStats>> GetServiceStatsAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<ServiceStats>>(Array.Empty<ServiceStats>());
-
-        public Task<bool> TryAddBookingAsync(Booking booking, CancellationToken cancellationToken = default)
-        {
-            bookings.Add(booking);
-            return Task.FromResult(true);
-        }
     }
 }
