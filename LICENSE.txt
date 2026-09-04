@@ -1,0 +1,54 @@
+Copyright (c) 2026 Mykhailo Shapoval
+
+This software is licensed under the PolyForm Noncommercial License 1.0.0.
+
+Acceptance
+In order to receive this license and exercise any of the rights granted by it, 
+you must agree to its terms and conditions. The terms and conditions of this 
+license are an offer by the Licensor (the copyright holder above). If you 
+exercise any right granted by this license, you accept this offer and agree 
+to its terms.
+
+Copyright Grant
+Subject to the terms and conditions of this license, the Licensor grants you 
+a worldwide, royalty-free, non-exclusive, perpetual copyright license to do 
+the following with the software:
+1. Run the software.
+2. Copy the software.
+3. Modify the software.
+4. Distribute the software and modifications.
+
+Patent Grant
+Subject to the terms and conditions of this license, the Licensor grants you 
+a worldwide, royalty-free, non-exclusive, perpetual patent license to make, 
+have made, use, sell, offer for sale, import, and otherwise transfer the 
+software, where such license applies only to those patent claims licensable 
+by the Licensor that are necessarily infringed by the software.
+
+Noncommercial Limitation
+The licenses granted above do not include any right to use the software for 
+commercial purposes. Commercial purposes include any activity primarily 
+intended for or directed toward commercial advantage or monetary compensation. 
+For greater certainty, commercial purposes include:
+1. Selling or renting the software or modifications.
+2. Using the software or modifications to provide a service for a fee.
+3. Using the software or modifications in the course of operating a 
+   for-profit business.
+
+Notice Requirement
+You must include a copy of this license, including the copyright notice above, 
+with all copies of the software and modifications you distribute.
+
+Defense of Claims
+If you bring a patent claim against any person claiming that the software 
+or any modification infringes a patent, your patent license for the 
+software grants you under this license terminates automatically.
+
+Disclaimer of Warranties
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+SOFTWARE.
